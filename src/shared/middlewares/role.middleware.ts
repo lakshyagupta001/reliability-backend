@@ -1,29 +1,29 @@
-import { NextFunction, Response } from "express";
-import { AuthorizationError } from "../utils/errors/authorization-error";
-import { AuthenticationError } from "../utils/errors/authentication-error";
+import { NextFunction, Response } from 'express';
+import { AuthorizationError } from '../utils/errors/authorization-error';
+import { AuthenticationError } from '../utils/errors/authentication-error';
 import { UserRole } from '../../modules/users/user.types';
 import { AuthRequest } from './auth.middleware';
 
 export const ROLE_PERMISSIONS = {
   ADMIN: [
-    "dashboard:view",
-    "projects:view",
-    "projects:create",
-    "projects:update",
-    "projects:delete",
-    "reliability-forms:view",
-    "reliability-forms:create",
-    "reliability-forms:update",
-    "reports:view",
-    "users:view",
-    "users:manage",
+    'dashboard:view',
+    'projects:view',
+    'projects:create',
+    'projects:update',
+    'projects:delete',
+    'documents:view',
+    'documents:upload',
+    'documents:delete',
+    'reports:view',
+    'users:view',
+    'users:manage',
   ],
   EMPLOYEE: [
-    "dashboard:view",
-    "projects:view",
-    "projects:create",
-    "reliability-forms:view",
-    "reports:view",
+    'dashboard:view',
+    'projects:view',
+    'projects:create',
+    'documents:view',
+    'reports:view',
   ],
 } as const;
 

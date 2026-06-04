@@ -16,6 +16,9 @@ Implemented so far:
 - Prisma ORM database architecture
 - PostgreSQL-ready schema aligned with `documents/database_schema.md`
 - Seed script for initial ADMIN and EMPLOYEE users
+- User listing/profile/status management
+- Project CRUD with expanded business, sample, compliance, and technical attributes
+- Project document upload/delete metadata support
 
 ## Architecture
 
@@ -38,22 +41,19 @@ backend/
 │   │   │
 │   │   ├── users/
 │   │   │   ├── user.controller.ts
+│   │   │   ├── user.repository.ts
 │   │   │   ├── user.service.ts
 │   │   │   ├── user.routes.ts
+│   │   │   ├── user.validation.ts
 │   │   │   └── user.types.ts
 │   │   │
 │   │   ├── projects/
 │   │   │   ├── project.controller.ts
+│   │   │   ├── project.repository.ts
 │   │   │   ├── project.service.ts
 │   │   │   ├── project.routes.ts
+│   │   │   ├── project.validation.ts
 │   │   │   └── project.types.ts
-│   │   │
-│   │   ├── reliability-requirements/
-│   │   │   ├── rr.controller.ts
-│   │   │   ├── rr.service.ts
-│   │   │   ├── rr.routes.ts
-│   │   │   ├── rr.validation.ts
-│   │   │   └── rr.types.ts
 │   │   │
 │   │   └── reports/
 │   │       ├── report.controller.ts
@@ -61,27 +61,19 @@ backend/
 │   │       ├── report.routes.ts
 │   │       └── report.types.ts
 │   │
-│   ├── middlewares/
-│   │   ├── auth.middleware.ts
-│   │   ├── role.middleware.ts
-│   │   ├── error.middleware.ts
-│   │   └── validate.middleware.ts
-│   │
 │   ├── prisma/
 │   │   └── prisma.client.ts
 │   │
-│   ├── utils/
-│   │   ├── api-response.ts
-│   │   ├── async-handler.ts
-│   │   └── errors/
+│   ├── shared/
+│   │   ├── config/
+│   │   ├── middlewares/
+│   │   └── utils/
 │   │
-│   ├── config/
-│   ├── types/
 │   ├── app.ts
 │   └── server.ts
 ```
 
-Only authentication and authorization are implemented right now. Other module files are placeholders for the next development phases.
+Authentication, user management, and project management are implemented. Reports remain an integration placeholder for the next development phases.
 
 ## Database
 
@@ -145,6 +137,18 @@ Base URL: `http://localhost:4000/api/v1`
 | `POST` | `/api/v1/auth/login` | Login and receive JWT |
 | `POST` | `/api/v1/auth/logout` | Stateless logout, JWT required |
 | `GET` | `/api/v1/auth/me` | Current authenticated user, JWT required |
+| `GET` | `/api/v1/users/me` | Current authenticated user profile |
+| `GET` | `/api/v1/users` | List users, ADMIN only |
+| `GET` | `/api/v1/users/:id` | Get user by ID, ADMIN only |
+| `PATCH` | `/api/v1/users/:id` | Update user profile/role/status, ADMIN only |
+| `PATCH` | `/api/v1/users/:id/status` | Activate or deactivate user, ADMIN only |
+| `GET` | `/api/v1/projects` | List projects |
+| `GET` | `/api/v1/projects/:id` | Get project by ID |
+| `POST` | `/api/v1/projects` | Create project |
+| `PATCH` | `/api/v1/projects/:id` | Update project, ADMIN only |
+| `DELETE` | `/api/v1/projects/:id` | Delete project, ADMIN only |
+| `POST` | `/api/v1/projects/:id/documents` | Upload project document |
+| `DELETE` | `/api/v1/projects/documents/:documentId` | Delete project document, ADMIN only |
 
 ## Authorization Usage
 

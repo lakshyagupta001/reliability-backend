@@ -4,22 +4,35 @@ import { ValidationError } from '../utils/errors/validation-error';
 
 type RequestValidationSource = 'body' | 'query' | 'params';
 
+// Extend Express Request to carry validated data after middleware runs
+declare global {
+  namespace Express {
+    interface Request {
+      validatedBody?: unknown;
+      validatedQuery?: unknown;
+      validatedParams?: unknown;
+    }
+  }
+}
+
 function validateRequest(source: RequestValidationSource, schema: ZodTypeAny) {
   return (req: Request, _res: Response, next: NextFunction) => {
-    const requestData = req as unknown as Record<RequestValidationSource, unknown>;
-    const result = schema.safeParse(requestData[source]);
+    const result = schema.safeParse(req[source]);
 
     if (!result.success) {
       throw new ValidationError(
         'Validation failed',
         result.error.errors.map((issue) => ({
           field: issue.path.join('.'),
-          message: issue.message
-        }))
+          message: issue.message,
+        })),
       );
     }
 
-    requestData[source] = result.data;
+    if (source === 'body') req.validatedBody = result.data;
+    if (source === 'query') req.validatedQuery = result.data;
+    if (source === 'params') req.validatedParams = result.data;
+
     next();
   };
 }

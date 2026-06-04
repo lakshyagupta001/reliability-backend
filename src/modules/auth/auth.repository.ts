@@ -77,7 +77,3 @@ export class SessionRepository {
 
 export const authUserRepository = new AuthUserRepository();
 export const sessionRepository = new SessionRepository();
-
-// Compatibility alias for middleware patterns that use `adminRepository` terminology.
-// In this application, ADMIN and EMPLOYEE are both records in the User table.
-export const adminRepository = authUserRepository;
