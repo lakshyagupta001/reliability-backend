@@ -1,18 +1,9 @@
 import bcrypt from 'bcryptjs';
-import { PrismaClient, UserRole, ProjectCategory, ProjectSubcategory, ProjectType, ProjectStatus, ProjectScope } from '@prisma/client';
+import { PrismaClient, UserRole, ProjectScope } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
 const DEFAULT_PASSWORD = 'Pass@123';
-
-const categories: ProjectCategory[] = [ProjectCategory.RAC, ProjectCategory.CAG];
-const subcategories: Record<ProjectCategory, ProjectSubcategory[]> = {
-  [ProjectCategory.RAC]: [ProjectSubcategory.HP, ProjectSubcategory.SRICITY],
-  [ProjectCategory.CAG]: [ProjectSubcategory.VRF, ProjectSubcategory.DUCTED, ProjectSubcategory.IBG, ProjectSubcategory.CHILLERS],
-};
-const types: ProjectType[] = [ProjectType.ODU, ProjectType.IDU, ProjectType.DRIVE, ProjectType.COMPONENT];
-const statuses = Object.values(ProjectStatus);
-const scopes = Object.values(ProjectScope);
 
 const projectNames = [
   'Smart Inverter 3HP Wall-Mounted Unit',
@@ -79,6 +70,39 @@ const complianceList = [
 
 const refrigerants = ['R-32', 'R-410A', 'R-290', 'R-454B', 'R-1234yf', 'R-744 (CO2)'];
 
+const statusRemarks: Record<string, string[]> = {
+  NOT_STARTED: [
+    'Awaiting resource allocation.',
+    'Pending management approval.',
+    'Waiting for component availability.',
+    'Scheduled for next review cycle.',
+  ],
+  ONGOING: [
+    'Testing currently in progress.',
+    'Reliability validation under execution.',
+    'Data collection phase ongoing.',
+    'Component evaluation in progress.',
+  ],
+  COMPLETED: [
+    'Reliability testing completed successfully.',
+    'Validation approved by engineering team.',
+    'All checkpoints passed.',
+    'Project completed and documented.',
+  ],
+  ON_HOLD: [
+    'Awaiting vendor feedback.',
+    'Material procurement delayed.',
+    'Customer inputs pending.',
+    'Testing paused due to dependency.',
+  ],
+  DROPPED: [
+    'Request cancelled by stakeholder.',
+    'Duplicate reliability request.',
+    'Scope no longer required.',
+    'Project discontinued.',
+  ],
+};
+
 const picNames = [
   'Rajesh Kumar', 'Priya Sharma', 'Anil Verma', 'Sunita Patel', 'Vikram Singh',
   'Meera Joshi', 'Suresh Nair', 'Kavita Reddy', 'Arun Bose', 'Deepa Iyer',
@@ -139,6 +163,97 @@ async function main() {
   const employee = await prisma.user.findFirst({ where: { email: 'lakshyagupta@bluestarindia.com' } });
   if (!admin || !employee) throw new Error('Seed users not found');
 
+  const racCategory = await prisma.category.upsert({
+    where: { code: 'RAC' },
+    update: { name: 'RAC', description: 'Room Air Conditioners' },
+    create: { name: 'RAC', code: 'RAC', description: 'Room Air Conditioners' }
+  });
+
+  const cagCategory = await prisma.category.upsert({
+    where: { code: 'CAG' },
+    update: { name: 'CAG', description: 'Commercial and Industrial Air Conditioning' },
+    create: { name: 'CAG', code: 'CAG', description: 'Commercial and Industrial Air Conditioning' }
+  });
+
+  const hpSubcategory = await prisma.subcategory.upsert({
+    where: { code: 'HP' },
+    update: { categoryId: racCategory.id, name: 'HP', description: 'Heat Pump' },
+    create: { categoryId: racCategory.id, name: 'HP', code: 'HP', description: 'Heat Pump' }
+  });
+
+  const sricitySubcategory = await prisma.subcategory.upsert({
+    where: { code: 'SRICITY' },
+    update: { categoryId: racCategory.id, name: 'SRICITY', description: 'Smart Inverter Technology' },
+    create: { categoryId: racCategory.id, name: 'SRICITY', code: 'SRICITY', description: 'Smart Inverter Technology' }
+  });
+
+  const vrfSubcategory = await prisma.subcategory.upsert({
+    where: { code: 'VRF' },
+    update: { categoryId: cagCategory.id, name: 'VRF', description: 'Variable Refrigerant Flow' },
+    create: { categoryId: cagCategory.id, name: 'VRF', code: 'VRF', description: 'Variable Refrigerant Flow' }
+  });
+
+  const ductedSubcategory = await prisma.subcategory.upsert({
+    where: { code: 'DUCTED' },
+    update: { categoryId: cagCategory.id, name: 'DUCTED', description: 'Ducted Air Systems' },
+    create: { categoryId: cagCategory.id, name: 'DUCTED', code: 'DUCTED', description: 'Ducted Air Systems' }
+  });
+
+  const ibgSubcategory = await prisma.subcategory.upsert({
+    where: { code: 'IBG' },
+    update: { categoryId: cagCategory.id, name: 'IBG', description: 'Industrial Batch Galleria' },
+    create: { categoryId: cagCategory.id, name: 'IBG', code: 'IBG', description: 'Industrial Batch Galleria' }
+  });
+
+  const chillersSubcategory = await prisma.subcategory.upsert({
+    where: { code: 'CHILLERS' },
+    update: { categoryId: cagCategory.id, name: 'CHILLERS', description: 'Chiller Systems' },
+    create: { categoryId: cagCategory.id, name: 'CHILLERS', code: 'CHILLERS', description: 'Chiller Systems' }
+  });
+
+  const statuses = [
+    { code: 'NOT_STARTED', displayName: 'Not Started', color: '#6B7280', isSystem: true },
+    { code: 'ONGOING', displayName: 'Ongoing', color: '#3B82F6', isSystem: true },
+    { code: 'COMPLETED', displayName: 'Completed', color: '#22C55E', isSystem: true },
+    { code: 'ON_HOLD', displayName: 'On Hold', color: '#F59E0B', isSystem: true },
+    { code: 'DROPPED', displayName: 'Dropped', color: '#EF4444', isSystem: true },
+  ];
+
+  const createdStatuses: Record<string, string> = {};
+  for (const status of statuses) {
+    const s = await prisma.statusMaster.upsert({
+      where: { code: status.code },
+      update: { displayName: status.displayName, color: status.color, isSystem: status.isSystem },
+      create: { code: status.code, displayName: status.displayName, color: status.color, isSystem: status.isSystem }
+    });
+    createdStatuses[status.code] = s.id;
+  }
+
+  const subcategoryMap = [
+    { sub: hpSubcategory, typeCodes: ['ODU', 'IDU'] },
+    { sub: sricitySubcategory, typeCodes: ['ODU', 'IDU', 'DRIVE'] },
+    { sub: vrfSubcategory, typeCodes: ['ODU', 'IDU', 'DRIVE', 'COMPONENT'] },
+    { sub: ductedSubcategory, typeCodes: ['ODU', 'IDU'] },
+    { sub: ibgSubcategory, typeCodes: ['ODU', 'IDU'] },
+    { sub: chillersSubcategory, typeCodes: ['ODU', 'IDU'] },
+  ];
+
+  const subcategories = [];
+  for (const item of subcategoryMap) {
+    const types = [];
+    for (const typeCode of item.typeCodes) {
+      const type = await prisma.type.upsert({
+        where: { subcategoryId_code: { subcategoryId: item.sub.id, code: typeCode } },
+        update: { name: typeCode, description: `${typeCode} for ${item.sub.code}` },
+        create: { subcategoryId: item.sub.id, name: typeCode, code: typeCode, description: `${typeCode} for ${item.sub.code}` }
+      });
+      types.push(type);
+    }
+    subcategories.push({ sub: item.sub, types });
+  }
+
+  const scopes = Object.values(ProjectScope);
+
   const now = new Date();
   const twoYearsAgo = new Date(now.getFullYear() - 2, 0, 1);
   const sixMonthsLater = new Date(now.getFullYear(), now.getMonth() + 6, 31);
@@ -147,10 +262,10 @@ async function main() {
 
   const createdProjects = [];
   for (let i = 0; i < 30; i++) {
-    const category = randomElement(categories);
-    const subcategory = randomElement(subcategories[category]);
-    const type = randomElement(types);
-    const status = randomElement(statuses);
+    const subcategoryData = randomElement(subcategories);
+    const type = randomElement(subcategoryData.types);
+    const statusCode = randomElement(Object.keys(createdStatuses));
+    const statusId = createdStatuses[statusCode];
     const scope = Math.random() > 0.3 ? randomElement(scopes) : null;
 
     const startDate = randomDate(twoYearsAgo, new Date(now.getFullYear(), now.getMonth() - 3, 1));
@@ -162,22 +277,23 @@ async function main() {
       ? new Date(startDate.getTime() + randomInt(15, 90) * 24 * 60 * 60 * 1000)
       : null;
 
-    const hasMassProdDate = status === ProjectStatus.COMPLETED && Math.random() > 0.5;
+    const hasMassProdDate = statusCode === 'COMPLETED' && Math.random() > 0.5;
     const massProductionDate = hasMassProdDate
       ? new Date(endDate.getTime() + randomInt(30, 180) * 24 * 60 * 60 * 1000)
       : null;
 
     const projectData = {
       name: projectNames[i % projectNames.length] + (i >= projectNames.length ? ` v${Math.floor(i / projectNames.length) + 1}` : ''),
-      category,
-      subcategory,
-      type,
-      status,
+      categoryId: subcategoryData.sub.categoryId,
+      subcategoryId: subcategoryData.sub.id,
+      typeId: type.id,
+      statusId,
+      statusRemark: randomElement(statusRemarks[statusCode]),
       startDate,
       endDate,
       location: randomElement(locations),
       partName: `PN-${String(1000 + i).padStart(5, '0')}-REV${randomElement(['A', 'B', 'C', 'D'])}`,
-      modelName: `BL-${category}-${subcategory}-${randomInt(100, 999)}${type === 'ODU' ? 'O' : type === 'IDU' ? 'I' : type === 'DRIVE' ? 'D' : 'C'}`,
+      modelName: `BL-${subcategoryData.sub.code}-${randomInt(100, 999)}${type.code === 'ODU' ? 'O' : type.code === 'IDU' ? 'I' : type.code === 'DRIVE' ? 'D' : 'C'}`,
       projectPIC: randomElement(picNames),
       projectScope: scope,
       applicableCompliance: randomElement(complianceList),
@@ -193,7 +309,7 @@ async function main() {
       iduFirmwareVersion: `FW.r${randomInt(100, 999)}.${randomInt(0, 9)}`,
       oduFirmwareVersion: `FW.r${randomInt(100, 999)}.${randomInt(0, 9)}`,
       partNumberAndMake: `MAKE-${randomElement(['BL', 'COPELAND', 'DANFOSS', 'EMERSON', 'HITACHI', 'MITSUBISHI'])}-${randomInt(10000, 99999)}`,
-      technicalDataSheetReference: `TDS-${category}${subcategory}-${String(i + 1).padStart(4, '0')}-2024`,
+      technicalDataSheetReference: `TDS-${subcategoryData.sub.code}${type.code}-${String(i + 1).padStart(4, '0')}-2024`,
       maximumPipingLength: `${randomInt(15, 75)}m`,
       maximumCommunicationWireLength: `${randomInt(100, 1000)}m`,
       oduFanMotorDetails: `${randomInt(1, 4)}x ${randomInt(25, 100)}W BLDC fan`,
@@ -206,44 +322,15 @@ async function main() {
 
     const project = await prisma.project.create({ data: projectData });
     createdProjects.push(project);
-  }
 
-  const docTypes: Array<'DESIGN_DOCUMENT' | 'HARDWARE_EVALUATION_REPORT' | 'LOGIC_EVALUATION_REPORT' | 'CHANGE_POINT_DOCUMENT'> = [
-    'DESIGN_DOCUMENT', 'HARDWARE_EVALUATION_REPORT', 'LOGIC_EVALUATION_REPORT', 'CHANGE_POINT_DOCUMENT'
-  ];
-
-  for (const project of createdProjects) {
-    const docCount = randomInt(0, 3);
-    for (let d = 0; d < docCount; d++) {
-      await prisma.projectDocument.create({
-        data: {
-          projectId: project.id,
-          documentType: randomElement(docTypes),
-          fileName: `Doc-${project.id.slice(0, 8)}-${d + 1}.pdf`,
-          fileUrl: `/uploads/${project.id}/${d + 1}.pdf`,
-          fileSize: randomInt(50000, 5000000),
-          mimeType: 'application/pdf',
-          uploadedBy: project.createdBy,
-        }
-      });
-    }
-
-    if (project.status === ProjectStatus.COMPLETED && Math.random() > 0.5) {
-      await prisma.generatedReport.create({
-        data: {
-          projectId: project.id,
-          reportName: `Reliability Report - ${project.name}`,
-          reportType: randomElement(['Performance', 'Stress Test', 'Lifetime', 'Compliance']),
-          storagePath: `/reports/${project.id}/report.pdf`,
-          fileFormat: 'PDF',
-          fileSize: randomInt(100000, 2000000),
-          status: 'COMPLETED',
-          generatedBy: project.createdBy,
-          generatedAt: new Date(project.endDate.getTime() + randomInt(1, 30) * 24 * 60 * 60 * 1000),
-          metadata: { version: '1.0', pages: randomInt(5, 40) },
-        }
-      });
-    }
+    await prisma.projectStatusHistory.create({
+      data: {
+        projectId: project.id,
+        statusId,
+        remark: 'Project created',
+        changedBy: projectData.createdBy,
+      }
+    });
   }
 
   console.log(`Seed completed: ${createdProjects.length} projects created`);

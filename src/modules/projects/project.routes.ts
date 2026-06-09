@@ -13,15 +13,15 @@ import {
 } from './project.controller';
 import {
   listProjectsQuerySchema,
-  createProjectWithSubcategoryRule,
-  updateProjectWithSubcategoryRule,
+  createProjectSchema,
+  updateProjectSchema,
   projectIdParamSchema,
 } from './project.validation';
 import { upload } from '../../shared/config/upload.config';
+import { getProjectReports } from '../reports/report.controller';
 
 const router = Router();
 
-// GET /projects — any authenticated user
 router.get(
   '/',
   authenticate,
@@ -29,7 +29,13 @@ router.get(
   listProjects,
 );
 
-// GET /projects/:id — any authenticated user
+router.get(
+  '/:id/reports',
+  authenticate,
+  validateParams(projectIdParamSchema),
+  getProjectReports,
+);
+
 router.get(
   '/:id',
   authenticate,
@@ -37,26 +43,23 @@ router.get(
   getProject,
 );
 
-// POST /projects — ADMIN or EMPLOYEE can create
 router.post(
   '/',
   authenticate,
   authorizeRoles('ADMIN', 'EMPLOYEE'),
-  validateBody(createProjectWithSubcategoryRule),
+  validateBody(createProjectSchema),
   createProject,
 );
 
-// PATCH /projects/:id — ADMIN only
 router.patch(
   '/:id',
   authenticate,
   authorizeRoles('ADMIN'),
   validateParams(projectIdParamSchema),
-  validateBody(updateProjectWithSubcategoryRule),
+  validateBody(updateProjectSchema),
   updateProject,
 );
 
-// DELETE /projects/:id — ADMIN only
 router.delete(
   '/:id',
   authenticate,
@@ -65,7 +68,6 @@ router.delete(
   deleteProject,
 );
 
-// POST /projects/:id/documents — ADMIN or EMPLOYEE
 router.post(
   '/:id/documents',
   authenticate,
@@ -74,7 +76,6 @@ router.post(
   uploadDocument,
 );
 
-// DELETE /projects/documents/:documentId — ADMIN only
 router.delete(
   '/documents/:documentId',
   authenticate,

@@ -7,8 +7,6 @@ import {
   type PaginationMeta,
 } from '../../shared/utils/api-response';
 import { type AuthRequest } from '../../shared/middlewares/auth.middleware';
-import { AppError } from '../../shared/utils/errors/app-error';
-import { toPublicProject } from '../../shared/utils/project.mapper';
 import { projectService } from './project.service';
 import type { CreateProjectBody, UpdateProjectBody, ListProjectsQuery } from './project.types';
 
@@ -26,10 +24,7 @@ export const listProjects = asyncHandler(
       hasPreviousPage: page > 1,
     };
 
-    // Map directly from findAll rows — avoids N+1 DB queries
-    const publicProjects = rows.map((p) => toPublicProject(p));
-
-    return sendPaginatedSuccess(res, 200, 'Projects fetched successfully', publicProjects, pagination);
+    return sendPaginatedSuccess(res, 200, 'Projects fetched successfully', rows, pagination);
   },
 );
 
@@ -72,16 +67,15 @@ export const deleteProject = asyncHandler(
 export const uploadDocument = asyncHandler(
   async (req: AuthRequest, res: Response) => {
     const { id } = req.params as { id: string };
-    const { documentType } = req.body as { documentType: string };
 
     if (!req.file) {
-      throw new AppError(400, 'No file uploaded', 'FILE_REQUIRED');
+      throw new Error('No file uploaded');
     }
 
     const user = req.user!;
     const document = await projectService.addDocument(
       id,
-      documentType,
+      req.file.filename,
       req.file.originalname,
       req.file.path,
       user.id,

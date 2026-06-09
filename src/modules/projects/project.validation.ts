@@ -1,27 +1,6 @@
 import { z } from 'zod';
-import {
-  ProjectCategory,
-  ProjectSubcategory,
-  ProjectType,
-  ProjectStatus,
-  ProjectScope,
-  DocumentType,
-} from '@prisma/client';
 
-// ============================================================================
-// ENUM SCHEMAS
-// ============================================================================
-
-export const projectCategorySchema = z.nativeEnum(ProjectCategory);
-export const projectSubcategorySchema = z.nativeEnum(ProjectSubcategory);
-export const projectTypeSchema = z.nativeEnum(ProjectType);
-export const projectStatusSchema = z.nativeEnum(ProjectStatus);
-export const projectScopeSchema = z.nativeEnum(ProjectScope);
-export const documentTypeSchema = z.nativeEnum(DocumentType);
-
-// ============================================================================
-// PAGINATION + FILTER SCHEMAS
-// ============================================================================
+const uuidSchema = z.string().uuid('Invalid ID');
 
 export const paginationSchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -29,44 +8,44 @@ export const paginationSchema = z.object({
 });
 
 export const projectSortBySchema = z.enum([
-  'name', 'category', 'subcategory', 'type', 'status',
-  'startDate', 'endDate', 'createdAt',
+  'name', 'startDate', 'endDate', 'createdAt', 'updatedAt',
 ]);
 export const sortOrderSchema = z.enum(['asc', 'desc']);
 
 export const listProjectsQuerySchema = paginationSchema.extend({
   search: z.string().optional(),
-  category: projectCategorySchema.optional(),
-  subcategory: projectSubcategorySchema.optional(),
-  type: projectTypeSchema.optional(),
-  status: projectStatusSchema.optional(),
+  categoryId: uuidSchema.optional(),
+  subcategoryId: uuidSchema.optional(),
+  typeId: uuidSchema.optional(),
+  statusId: uuidSchema.optional(),
   sortBy: projectSortBySchema.default('createdAt'),
   sortOrder: sortOrderSchema.default('desc'),
   startDateFrom: z.string().datetime().optional(),
   startDateTo: z.string().datetime().optional(),
   endDateFrom: z.string().datetime().optional(),
   endDateTo: z.string().datetime().optional(),
+  hasReportFormat: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
+  hasTestSummary: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
+  missingAnyReport: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
 });
-
-// ============================================================================
-// CREATE PROJECT SCHEMA
-// ============================================================================
 
 const dateStringSchema = z.string().refine(
   (val) => !isNaN(Date.parse(val)),
   { message: 'Invalid date string' },
 );
 
+const projectScopeSchema = z.enum(['DOMESTIC', 'OVERSEAS']);
+
 export const createProjectSchema = z.object({
   name: z.string().min(1, 'Project name is required').max(255),
-  category: projectCategorySchema,
-  subcategory: projectSubcategorySchema,
-  type: projectTypeSchema,
+  categoryId: uuidSchema,
+  subcategoryId: uuidSchema,
+  typeId: uuidSchema,
+  statusId: uuidSchema,
   startDate: dateStringSchema,
   endDate: dateStringSchema,
   location: z.string().min(1).max(255),
 
-  // Basic Details
   partName: z.string().max(255).optional(),
   modelName: z.string().max(255).optional(),
   projectPIC: z.string().max(255).optional(),
@@ -81,7 +60,6 @@ export const createProjectSchema = z.object({
 
   projectPriorityScale: z.string().max(50).optional(),
 
-  // Technical Details
   operatingVoltageRange: z.string().max(100).optional(),
   ambientOperatingRange: z.string().max(100).optional(),
 
@@ -104,16 +82,14 @@ export const createProjectSchema = z.object({
 
   refrigerantName: z.string().max(100).optional(),
   refrigerantQuantity: z.string().max(50).optional(),
+
+  statusRemark: z.string().max(1000).optional(),
 }).refine(
   (data) => new Date(data.endDate) > new Date(data.startDate),
   { message: 'End date must be after start date', path: ['endDate'] },
 );
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
-
-// ============================================================================
-// UPDATE PROJECT SCHEMA (partial, all optional except at least one field)
-// ============================================================================
 
 const partialDateStringSchema = z.string().refine(
   (val) => val === undefined || val === '' || !isNaN(Date.parse(val)),
@@ -122,10 +98,10 @@ const partialDateStringSchema = z.string().refine(
 
 export const updateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
-  category: projectCategorySchema.optional(),
-  subcategory: projectSubcategorySchema.optional(),
-  type: projectTypeSchema.optional(),
-  status: projectStatusSchema.optional(),
+  categoryId: uuidSchema.optional(),
+  subcategoryId: uuidSchema.optional(),
+  typeId: uuidSchema.optional(),
+  statusId: uuidSchema.optional(),
   startDate: partialDateStringSchema,
   endDate: partialDateStringSchema,
   location: z.string().max(255).optional(),
@@ -166,6 +142,8 @@ export const updateProjectSchema = z.object({
 
   refrigerantName: z.string().max(100).optional(),
   refrigerantQuantity: z.string().max(50).optional(),
+
+  statusRemark: z.string().max(1000).optional(),
 }).refine(
   (data) => {
     if (data.startDate && data.endDate) {
@@ -190,49 +168,6 @@ export const updateProjectSchema = z.object({
 
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 
-// ============================================================================
-// DOCUMENT UPLOAD SCHEMA
-// ============================================================================
-
-export const documentTypeParamSchema = z.object({
-  documentType: documentTypeSchema,
-});
-
 export const projectIdParamSchema = z.object({
-  id: z.string().uuid('Invalid project ID'),
+  id: uuidSchema,
 });
-
-// ============================================================================
-// SUB-CATEGORY RULES (cross-field validation)
-// ============================================================================
-
-const RAC_SUBCATEGORIES = ['HP', 'SRICITY'] as const;
-const CAG_SUBCATEGORIES = ['VRF', 'DUCTED', 'IBG', 'CHILLERS'] as const;
-
-export const createProjectWithSubcategoryRule = createProjectSchema.refine(
-  (data) => {
-    if (data.category === 'RAC') {
-      return (RAC_SUBCATEGORIES as unknown as string[]).includes(data.subcategory);
-    }
-    if (data.category === 'CAG') {
-      return (CAG_SUBCATEGORIES as unknown as string[]).includes(data.subcategory);
-    }
-    return false;
-  },
-  { message: 'Invalid subcategory for selected category', path: ['subcategory'] },
-);
-
-export const updateProjectWithSubcategoryRule = updateProjectSchema.refine(
-  (data) => {
-    if (data.category !== undefined && data.subcategory !== undefined) {
-      if (data.category === 'RAC') {
-        return (RAC_SUBCATEGORIES as unknown as string[]).includes(data.subcategory);
-      }
-      if (data.category === 'CAG') {
-        return (CAG_SUBCATEGORIES as unknown as string[]).includes(data.subcategory);
-      }
-    }
-    return true;
-  },
-  { message: 'Invalid subcategory for selected category', path: ['subcategory'] },
-);

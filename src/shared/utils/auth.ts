@@ -1,6 +1,6 @@
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { authConfig } from '../config/auth.config';
-import { AppError } from './appError';
+import { AppError } from './errors/app-error';
 import { JwtAuthPayload } from '../../modules/auth/auth.types';
 
 export type TokenType = 'access';

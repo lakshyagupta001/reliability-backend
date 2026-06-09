@@ -15,8 +15,13 @@ export const ROLE_PERMISSIONS = {
     'documents:upload',
     'documents:delete',
     'reports:view',
+    'reports:create',
+    'reports:update',
+    'reports:delete',
     'users:view',
     'users:manage',
+    'master-data:view',
+    'master-data:manage',
   ],
   EMPLOYEE: [
     'dashboard:view',
@@ -24,6 +29,8 @@ export const ROLE_PERMISSIONS = {
     'projects:create',
     'documents:view',
     'reports:view',
+    'reports:create',
+    'master-data:view',
   ],
 } as const;
 

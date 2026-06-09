@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { verifyToken } from "../utils/auth";
-import { AppError } from "../utils/appError";
+import { AppError } from "../utils/errors/app-error";
 import { userService } from '../../modules/users/user.service';
 import {
   authUserRepository,

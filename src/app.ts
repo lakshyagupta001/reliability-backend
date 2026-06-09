@@ -7,6 +7,8 @@ import { appConfig } from './shared/config/app.config';
 import authRoutes from './modules/auth/auth.routes';
 import userRoutes from './modules/users/user.routes';
 import projectRoutes from './modules/projects/project.routes';
+import reportRoutes from './modules/reports/report.routes';
+import masterDataRoutes from './modules/master-data/master-data.routes';
 import { errorHandler } from './shared/middlewares/error.middleware';
 import { NotFoundError } from './shared/utils/errors/not-found-error';
 
@@ -41,6 +43,8 @@ app.get('/health', (_req, res) => {
 app.use(`${appConfig.apiPrefix}/auth`, authRoutes);
 app.use(`${appConfig.apiPrefix}/users`, userRoutes);
 app.use(`${appConfig.apiPrefix}/projects`, projectRoutes);
+app.use(`${appConfig.apiPrefix}/reports`, reportRoutes);
+app.use(`${appConfig.apiPrefix}/master-data`, masterDataRoutes);
 
 app.use((req) => {
   throw new NotFoundError(`Route ${req.method} ${req.originalUrl}`);

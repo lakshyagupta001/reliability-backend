@@ -16,56 +16,98 @@ enum UserRole {
   EMPLOYEE
 }
 
-enum ProjectCategory {
-  RAC
-  CAG
-}
-
-enum ProjectSubcategory {
-  HP
-  SRICITY
-  VRF
-  DUCTED
-  IBG
-  CHILLERS
-}
-
-enum ProjectType {
-  ODU
-  IDU
-  DRIVE
-  COMPONENT
-}
-
-enum ProjectStatus {
-  NOT_STARTED
-  ONGOING
-  COMPLETED
-  ON_HOLD
-  DROPPED
-}
-
 enum ProjectScope {
   DOMESTIC
   OVERSEAS
 }
 
-enum ReportStatus {
-  PENDING
-  GENERATING
-  COMPLETED
-  FAILED
-}
-
-enum DocumentType {
-  DESIGN_DOCUMENT
-  HARDWARE_EVALUATION_REPORT
-  LOGIC_EVALUATION_REPORT
-  CHANGE_POINT_DOCUMENT
+enum ReportType {
+  REPORT_FORMAT
+  SUMMARY_FORMAT
 }
 
 // ============================================================================
-// MODELS
+// MASTER DATA MODELS
+// ============================================================================
+
+model Category {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String   @db.VarChar(100)
+  code        String   @unique @db.VarChar(50)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  subcategories Subcategory[]
+  projects      Project[]
+
+  @@index([code])
+  @@index([isActive])
+  @@map("categories")
+}
+
+model Subcategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  categoryId  String   @db.Uuid
+  name        String   @db.VarChar(100)
+  code        String   @unique @db.VarChar(50)
+  description String?  @db.VarChar(500)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  category Category  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  projects Project[]
+  types    Type[]
+
+  @@index([categoryId])
+  @@index([code])
+  @@index([isActive])
+  @@map("subcategories")
+}
+
+model Type {
+  id            String   @id @default(uuid()) @db.Uuid
+  subcategoryId String   @db.Uuid
+  name          String   @db.VarChar(100)
+  code          String   @db.VarChar(50)
+  description   String?  @db.VarChar(500)
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  subcategory Subcategory @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
+  projects    Project[]
+
+  @@unique([subcategoryId, code])
+  @@index([subcategoryId])
+  @@index([code])
+  @@index([isActive])
+  @@map("types")
+}
+
+model StatusMaster {
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(50)
+  displayName String   @db.VarChar(100)
+  color       String   @default("#6B7280") @db.VarChar(20)
+  isActive    Boolean  @default(true)
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  projects      Project[]
+  statusHistory ProjectStatusHistory[]
+
+  @@index([code])
+  @@index([isActive])
+  @@index([isSystem])
+  @@map("status_master")
+}
+
+// ============================================================================
+// USER & AUTH
 // ============================================================================
 
 model User {
@@ -79,9 +121,9 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  projects         Project[]
-  generatedReports GeneratedReport[]
-  authSessions     AuthSession[]
+  projects          Project[]
+  reports           Report[]
+  authSessions      AuthSession[]
   uploadedDocuments ProjectDocument[]
 
   @@index([email])
@@ -108,118 +150,148 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
+// ============================================================================
+// PROJECT & DOCUMENTS
+// ============================================================================
+
 model Project {
-  id                  String           @id @default(uuid()) @db.Uuid
-  name                String           @db.VarChar(255)
-  category            ProjectCategory
-  subcategory         ProjectSubcategory
-  type                ProjectType
-  status              ProjectStatus    @default(NOT_STARTED)
-  startDate           DateTime         @db.Date
-  endDate             DateTime         @db.Date
-  location            String           @db.VarChar(255)
+  id            String   @id @default(uuid()) @db.Uuid
+  name          String   @db.VarChar(255)
+  categoryId    String   @db.Uuid
+  subcategoryId String   @db.Uuid
+  typeId        String   @db.Uuid
+  statusId      String   @db.Uuid
+  startDate     DateTime @db.Date
+  endDate       DateTime @db.Date
+  location      String   @db.VarChar(255)
 
   // Basic Details
-  partName                   String?   @db.VarChar(255)
-  modelName                  String?   @db.VarChar(255)
-  projectPIC                 String?   @db.VarChar(255)
-  projectScope               ProjectScope?
-  applicableCompliance       String?   @db.VarChar(500)
+  partName             String?       @db.VarChar(255)
+  modelName            String?       @db.VarChar(255)
+  projectPIC           String?       @db.VarChar(255)
+  projectScope         ProjectScope?
+  applicableCompliance String?       @db.VarChar(500)
 
-  sampleSubmissionDate       DateTime? @db.Date
-  massProductionDate         DateTime? @db.Date
+  sampleSubmissionDate DateTime? @db.Date
+  massProductionDate   DateTime? @db.Date
 
-  partSampleCount            Int?
-  productSampleCount         Int?
+  partSampleCount    Int?
+  productSampleCount Int?
 
-  projectPriorityScale       String?   @db.VarChar(50)
+  projectPriorityScale String? @db.VarChar(50)
 
   // Technical Details
-  operatingVoltageRange      String?   @db.VarChar(100)
-  ambientOperatingRange      String?   @db.VarChar(100)
+  operatingVoltageRange String? @db.VarChar(100)
+  ambientOperatingRange String? @db.VarChar(100)
 
-  iduHardwareVersion         String?   @db.VarChar(100)
-  oduHardwareVersion         String?   @db.VarChar(100)
+  iduHardwareVersion String? @db.VarChar(100)
+  oduHardwareVersion String? @db.VarChar(100)
 
-  iduFirmwareVersion        String?   @db.VarChar(100)
-  oduFirmwareVersion        String?   @db.VarChar(100)
+  iduFirmwareVersion String? @db.VarChar(100)
+  oduFirmwareVersion String? @db.VarChar(100)
 
-  partNumberAndMake          String?   @db.Text
-  technicalDataSheetReference String?  @db.Text
+  partNumberAndMake           String? @db.Text
+  technicalDataSheetReference String? @db.Text
 
-  maximumPipingLength        String?   @db.VarChar(100)
+  maximumPipingLength            String? @db.VarChar(100)
   maximumCommunicationWireLength String? @db.VarChar(100)
 
-  oduFanMotorDetails         String?   @db.Text
-  iduFanMotorDetails         String?   @db.Text
+  oduFanMotorDetails String? @db.Text
+  iduFanMotorDetails String? @db.Text
 
-  compressorDetails         String?   @db.Text
+  compressorDetails String? @db.Text
 
-  refrigerantName           String?   @db.VarChar(100)
-  refrigerantQuantity       String?   @db.VarChar(50)
+  refrigerantName     String? @db.VarChar(100)
+  refrigerantQuantity String? @db.VarChar(50)
 
-  createdBy                  String    @db.Uuid
-  createdAt                  DateTime  @default(now())
-  updatedAt                  DateTime  @updatedAt
+  // Status Remark
+  statusRemark String? @db.VarChar(1000)
 
-  creator           User                       @relation(fields: [createdBy], references: [id], onDelete: Restrict)
-  reports           GeneratedReport[]
-  documents         ProjectDocument[]
+  createdBy String   @db.Uuid
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  @@index([category])
-  @@index([subcategory])
-  @@index([type])
-  @@index([status])
+  creator       User                   @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  category      Category               @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subcategory   Subcategory            @relation(fields: [subcategoryId], references: [id], onDelete: Restrict)
+  type          Type                   @relation(fields: [typeId], references: [id], onDelete: Restrict)
+  status        StatusMaster           @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  documents     ProjectDocument[]
+  statusHistory ProjectStatusHistory[]
+  reports       Report[]
+
+  @@index([categoryId])
+  @@index([subcategoryId])
+  @@index([typeId])
+  @@index([statusId])
   @@index([startDate])
   @@index([endDate])
   @@index([createdBy])
-  @@index([category, subcategory, type])
   @@index([name])
   @@map("projects")
 }
 
 model ProjectDocument {
-  id            String       @id @default(uuid()) @db.Uuid
-  projectId     String       @db.Uuid
-  documentType  DocumentType
-  fileName      String       @db.VarChar(255)
-  fileUrl       String       @db.VarChar(500)
-  fileSize      Int?
-  mimeType      String?      @db.VarChar(100)
-  uploadedBy    String       @db.Uuid
-  uploadedAt    DateTime     @default(now())
+  id           String   @id @default(uuid()) @db.Uuid
+  projectId    String   @db.Uuid
+  fileName     String   @db.VarChar(255)
+  originalName String   @db.VarChar(255)
+  fileUrl      String   @db.VarChar(500)
+  fileSize     Int?
+  mimeType     String?  @db.VarChar(100)
+  uploadedBy   String   @db.Uuid
+  uploadedAt   DateTime @default(now())
 
   project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   uploader User    @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
 
   @@index([projectId])
-  @@index([documentType])
   @@index([uploadedBy])
   @@map("project_documents")
 }
 
-model GeneratedReport {
-  id          String       @id @default(uuid()) @db.Uuid
-  reportName  String       @db.VarChar(255)
-  reportType  String       @db.VarChar(100)
-  storagePath String       @db.VarChar(500)
-  fileFormat  String       @db.VarChar(50)
-  fileSize    Int?
-  status      ReportStatus @default(PENDING)
-  projectId   String?      @db.Uuid
-  generatedBy String       @db.Uuid
-  metadata    Json?
-  generatedAt DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
+model ProjectStatusHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  statusId  String   @db.Uuid
+  remark    String?  @db.VarChar(1000)
+  changedBy String   @db.Uuid
+  changedAt DateTime @default(now())
 
-  project  Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
-  generator User    @relation(fields: [generatedBy], references: [id], onDelete: Restrict)
+  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status  StatusMaster @relation(fields: [statusId], references: [id], onDelete: Restrict)
 
-  @@index([reportType])
-  @@index([status])
   @@index([projectId])
-  @@index([generatedBy])
-  @@index([generatedAt])
-  @@map("generated_reports")
+  @@index([statusId])
+  @@index([changedAt])
+  @@map("project_status_history")
+}
+
+// ============================================================================
+// REPORTS
+// ============================================================================
+
+model Report {
+  id           String     @id @default(uuid()) @db.Uuid
+  projectId    String     @db.Uuid
+  type         ReportType
+  title        String     @db.VarChar(255)
+  format       String     @db.VarChar(50)
+  formatNumber String?    @db.VarChar(100)
+  reportNumber String?    @db.VarChar(100)
+  data         Json
+  createdBy    String     @db.Uuid
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, type])
+  @@index([projectId])
+  @@index([format])
+  @@index([createdBy])
+  @@index([createdAt])
+  @@index([title])
+  @@map("reports")
 }
