@@ -1,5 +1,5 @@
 import multer from 'multer';
-import { AppError } from '../shared/utils/errors/app-error';
+import { AppError } from '../utils/errors/app-error';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10 MB — matches Cloudinary free-tier limit
 
