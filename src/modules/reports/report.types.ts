@@ -26,7 +26,7 @@ export interface ReportDetail {
 
 export interface CreateReportBody {
   projectId: string;
-  type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT';
+  type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT' | 'CONTROLLER_TEST_LIST';
   title: string;
   format: string;
   formatNumber?: string;

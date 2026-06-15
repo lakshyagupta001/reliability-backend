@@ -191,5 +191,5 @@ export interface PublicProject {
     color: string;
   };
   documents?: PublicProjectDocument[];
-  reports?: { id: string; type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT'; updatedAt: string }[];
+  reports?: { id: string; type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT' | 'CONTROLLER_TEST_LIST'; updatedAt: string }[];
 }

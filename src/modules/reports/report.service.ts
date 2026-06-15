@@ -47,6 +47,7 @@ export class ReportService {
   async getProjectReports(projectId: string): Promise<{
     REPORT_FORMAT: ReportDetail | null;
     SUMMARY_FORMAT: ReportDetail | null;
+    CONTROLLER_TEST_LIST: ReportDetail | null;
   }> {
     return reportRepository.findByProjectId(projectId);
   }

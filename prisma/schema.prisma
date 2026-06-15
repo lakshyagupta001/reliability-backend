@@ -24,6 +24,7 @@ enum ProjectScope {
 enum ReportType {
   REPORT_FORMAT
   SUMMARY_FORMAT
+  CONTROLLER_TEST_LIST
 }
 
 // ============================================================================

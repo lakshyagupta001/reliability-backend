@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const createReportSchema = z.object({
   projectId: z.string().uuid('Invalid project ID'),
-  type: z.enum(['REPORT_FORMAT', 'SUMMARY_FORMAT']),
+  type: z.enum(['REPORT_FORMAT', 'SUMMARY_FORMAT', 'CONTROLLER_TEST_LIST']),
   title: z.string().min(1, 'Title is required').max(255),
   format: z.string().max(50),
   formatNumber: z.string().max(100).optional(),

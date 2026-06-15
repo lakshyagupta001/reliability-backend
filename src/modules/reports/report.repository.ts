@@ -95,6 +95,7 @@ export class ReportRepository {
   async findByProjectId(projectId: string): Promise<{
     REPORT_FORMAT: ReportDetail | null;
     SUMMARY_FORMAT: ReportDetail | null;
+    CONTROLLER_TEST_LIST: ReportDetail | null;
   }> {
     const reports = await this.db.findMany({
       where: { projectId },
@@ -106,11 +107,13 @@ export class ReportRepository {
     const result = {
       REPORT_FORMAT: null as ReportDetail | null,
       SUMMARY_FORMAT: null as ReportDetail | null,
+      CONTROLLER_TEST_LIST: null as ReportDetail | null,
     };
 
     reports.forEach((report) => {
       if (report.type === 'REPORT_FORMAT') result.REPORT_FORMAT = report;
       if (report.type === 'SUMMARY_FORMAT') result.SUMMARY_FORMAT = report;
+      if (report.type === 'CONTROLLER_TEST_LIST') result.CONTROLLER_TEST_LIST = report;
     });
 
     return result;
