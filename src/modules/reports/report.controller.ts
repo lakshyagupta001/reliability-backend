@@ -9,6 +9,7 @@ import {
 import { type AuthRequest } from '../../shared/middlewares/auth.middleware';
 import { reportService } from './report.service';
 import type { CreateReportBody, UpdateReportBody, ListReportsQuery } from './report.types';
+import { rejectReportSchema } from './report.validation';
 
 export const listReports = asyncHandler(
   async (req: AuthRequest, res: Response) => {
@@ -83,5 +84,58 @@ export const getProjectReports = asyncHandler(
     const { id: projectId } = req.params as { id: string };
     const reports = await reportService.getProjectReports(projectId);
     return sendSuccess(res, 200, 'Project reports fetched successfully', reports);
+  },
+);
+
+export const getActiveRequests = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const user = req.user!;
+    const requests = await reportService.getActiveRequests(user.id);
+    return sendSuccess(res, 200, 'Active requests fetched successfully', requests);
+  },
+);
+
+export const getApprovals = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const user = req.user!;
+    const approvals = await reportService.getApprovals(user.id);
+    return sendSuccess(res, 200, 'Approvals fetched successfully', approvals);
+  },
+);
+
+export const reviewReport = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = req.user!;
+    const report = await reportService.reviewReport(id, user.id);
+    return sendSuccess(res, 200, 'Report reviewed successfully', report);
+  },
+);
+
+export const approveReport = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = req.user!;
+    const report = await reportService.approveReport(id, user.id);
+    return sendSuccess(res, 200, 'Report approved successfully', report);
+  },
+);
+export const rejectReport = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = req.user!;
+    const body = req.validatedBody as { remark: string };
+    const userName = `${user.firstName} ${user.lastName}`;
+    const report = await reportService.rejectReport(id, user.id, userName, body.remark);
+    return sendSuccess(res, 200, 'Report rejected successfully', report);
+  },
+);
+
+export const resubmitReport = asyncHandler(
+  async (req: AuthRequest, res: Response) => {
+    const { id } = req.params as { id: string };
+    const user = req.user!;
+    const report = await reportService.resubmitReport(id, user.id);
+    return sendSuccess(res, 200, 'Report resubmitted successfully', report);
   },
 );

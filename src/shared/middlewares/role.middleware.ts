@@ -5,7 +5,25 @@ import { UserRole } from '../../modules/users/user.types';
 import { AuthRequest } from './auth.middleware';
 
 export const ROLE_PERMISSIONS = {
-  ADMIN: [
+  MANAGER: [
+    'dashboard:view',
+    'projects:view',
+    'projects:create',
+    'projects:update',
+    'projects:delete',
+    'documents:view',
+    'documents:upload',
+    'documents:delete',
+    'reports:view',
+    'reports:create',
+    'reports:update',
+    'reports:delete',
+    'users:view',
+    'users:manage',
+    'master-data:view',
+    'master-data:manage',
+  ],
+  TEAM_LEAD: [
     'dashboard:view',
     'projects:view',
     'projects:create',
@@ -28,9 +46,11 @@ export const ROLE_PERMISSIONS = {
     'projects:view',
     'projects:create',
     'documents:view',
+    'documents:upload',
     'reports:view',
     'reports:create',
     'master-data:view',
+    'users:view',
   ],
 } as const;
 

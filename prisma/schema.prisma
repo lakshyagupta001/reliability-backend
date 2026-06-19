@@ -12,8 +12,9 @@ datasource db {
 // ============================================================================
 
 enum UserRole {
-  ADMIN
   EMPLOYEE
+  TEAM_LEAD
+  MANAGER
 }
 
 enum ProjectScope {
@@ -22,9 +23,19 @@ enum ProjectScope {
 }
 
 enum ReportType {
-  REPORT_FORMAT
-  SUMMARY_FORMAT
-  CONTROLLER_TEST_LIST
+  PART_REPORT
+  SUMMARY_REPORT
+  TEST_LIST
+}
+
+enum ReportStatus {
+  GENERATED
+  PENDING_REVIEW
+  REVIEWED
+  PENDING_APPROVAL
+  APPROVED
+  REVIEW_REJECTED
+  APPROVAL_REJECTED
 }
 
 // ============================================================================
@@ -124,6 +135,9 @@ model User {
 
   projects          Project[]
   reports           Report[]
+  reportsChecked    Report[] @relation("ReportChecker")
+  reportsApproved   Report[] @relation("ReportApprover")
+  reportApprovalHistory ReportApprovalHistory[]
   authSessions      AuthSession[]
   uploadedDocuments ProjectDocument[]
 
@@ -281,12 +295,27 @@ model Report {
   formatNumber String?    @db.VarChar(100)
   reportNumber String?    @db.VarChar(100)
   data         Json
+  status           ReportStatus @default(GENERATED)
+  checkedByUserId  String?      @db.Uuid
+  checkedByName    String?      @db.VarChar(100)
+  approvedByUserId String?      @db.Uuid
+  approvedByName   String?      @db.VarChar(100)
+  
+  // Workflow tracking
+  lastActionBy     String?      @db.VarChar(100)
+  lastActionType   String?      @db.VarChar(50)
+  lastActionAt     DateTime?
+  rejectionHistory Json?
+
   createdBy    String     @db.Uuid
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   creator User    @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  checker User?   @relation("ReportChecker", fields: [checkedByUserId], references: [id], onDelete: SetNull)
+  approver User?  @relation("ReportApprover", fields: [approvedByUserId], references: [id], onDelete: SetNull)
+  approvalHistory ReportApprovalHistory[]
 
   @@unique([projectId, type])
   @@index([projectId])
@@ -295,4 +324,20 @@ model Report {
   @@index([createdAt])
   @@index([title])
   @@map("reports")
+}
+
+model ReportApprovalHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  reportId  String   @db.Uuid
+  userId    String   @db.Uuid
+  action    String   @db.VarChar(50)
+  status    String   @db.VarChar(50)
+  createdAt DateTime @default(now())
+
+  report Report @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([reportId])
+  @@index([userId])
+  @@map("report_approval_history")
 }

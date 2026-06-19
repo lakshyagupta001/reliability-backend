@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-const userRoleSchema = z.enum(['ADMIN', 'EMPLOYEE']);
+const userRoleSchema = z.enum(['EMPLOYEE', 'TEAM_LEAD', 'MANAGER']);
 
 const nameSchema = z.string().trim().min(1).max(100);
 

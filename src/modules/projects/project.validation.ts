@@ -17,6 +17,7 @@ export const listProjectsQuerySchema = paginationSchema.extend({
   categoryId: uuidSchema.optional(),
   subcategoryId: uuidSchema.optional(),
   typeId: uuidSchema.optional(),
+  typeName: z.string().optional(),
   statusId: uuidSchema.optional(),
   sortBy: projectSortBySchema.default('createdAt'),
   sortOrder: sortOrderSchema.default('desc'),
@@ -24,7 +25,7 @@ export const listProjectsQuerySchema = paginationSchema.extend({
   startDateTo: z.string().datetime().optional(),
   endDateFrom: z.string().datetime().optional(),
   endDateTo: z.string().datetime().optional(),
-  hasReportFormat: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
+  hasPartReport: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
   hasTestSummary: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
   missingAnyReport: z.preprocess((val) => val === 'true' || val === true ? true : val === 'false' || val === false ? false : undefined, z.boolean().optional()),
 });

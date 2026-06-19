@@ -125,16 +125,40 @@ async function main() {
 
   const users = [
     {
-      email: 'ameysamant@bluestarindia.com',
-      firstName: 'Amey',
-      lastName: 'Samant',
-      role: UserRole.ADMIN
-    },
-    {
       email: 'lakshyagupta@bluestarindia.com',
       firstName: 'Lakshya',
       lastName: 'Gupta',
       role: UserRole.EMPLOYEE
+    },
+    {
+      email: 'yashojha@bluestarindia.com',
+      firstName: 'Yash',
+      lastName: 'Ojha',
+      role: UserRole.EMPLOYEE
+    },
+    {
+      email: 'rishabhtiwari@bluestarindia.com',
+      firstName: 'Rishabh',
+      lastName: 'Tiwari',
+      role: UserRole.TEAM_LEAD
+    },
+    {
+      email: 'viveksingh@bluestarindia.com',
+      firstName: 'Vivek',
+      lastName: 'Singh',
+      role: UserRole.TEAM_LEAD
+    },
+    {
+      email: 'ameysamant@bluestarindia.com',
+      firstName: 'Amey',
+      lastName: 'Samant',
+      role: UserRole.MANAGER
+    },
+    {
+      email: 'varunbhatt@bluestarindia.com',
+      firstName: 'Varun',
+      lastName: 'Bhatt',
+      role: UserRole.MANAGER
     }
   ];
 
@@ -159,9 +183,8 @@ async function main() {
     });
   }
 
-  const admin = await prisma.user.findFirst({ where: { email: 'ameysamant@bluestarindia.com' } });
-  const employee = await prisma.user.findFirst({ where: { email: 'lakshyagupta@bluestarindia.com' } });
-  if (!admin || !employee) throw new Error('Seed users not found');
+  const dbUsers = await prisma.user.findMany();
+  if (dbUsers.length === 0) throw new Error('Seed users not found');
 
   const racCategory = await prisma.category.upsert({
     where: { code: 'RAC' },
@@ -317,7 +340,7 @@ async function main() {
       compressorDetails: `${randomElement(['Scroll', 'Rotary', 'Screw', 'Centrifugal'])} ${randomElement(['Single', 'Dual', 'Tandem'])} ${randomInt(1, 8)}HP`,
       refrigerantName: randomElement(refrigerants),
       refrigerantQuantity: `${randomInt(0, 5)}.${randomInt(0, 9)}kg`,
-      createdBy: Math.random() > 0.4 ? admin.id : employee.id,
+      createdBy: randomElement(dbUsers).id,
     };
 
     const project = await prisma.project.create({ data: projectData });
@@ -334,8 +357,9 @@ async function main() {
   }
 
   console.log(`Seed completed: ${createdProjects.length} projects created`);
-  console.log('ADMIN:', users[0].email, '/', DEFAULT_PASSWORD);
-  console.log('EMPLOYEE:', users[1].email, '/', DEFAULT_PASSWORD);
+  for (const user of users) {
+    console.log(`${user.role}:`, user.email, '/', DEFAULT_PASSWORD);
+  }
 }
 
 main()

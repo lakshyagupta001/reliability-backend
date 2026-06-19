@@ -56,6 +56,6 @@ function isJwtAuthPayload(value: unknown): value is JwtAuthPayload {
     typeof payload.userId === 'string' &&
     typeof payload.sessionId === 'string' &&
     typeof payload.email === 'string' &&
-    (payload.role === 'ADMIN' || payload.role === 'EMPLOYEE')
+    (payload.role === 'MANAGER' || payload.role === 'TEAM_LEAD' || payload.role === 'EMPLOYEE')
   );
 }

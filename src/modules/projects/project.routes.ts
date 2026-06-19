@@ -46,7 +46,7 @@ router.get(
 router.post(
   '/',
   authenticate,
-  authorizeRoles('ADMIN', 'EMPLOYEE'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD', 'EMPLOYEE'),
   validateBody(createProjectSchema),
   createProject,
 );
@@ -54,7 +54,7 @@ router.post(
 router.patch(
   '/:id',
   authenticate,
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(projectIdParamSchema),
   validateBody(updateProjectSchema),
   updateProject,
@@ -63,7 +63,7 @@ router.patch(
 router.delete(
   '/:id',
   authenticate,
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(projectIdParamSchema),
   deleteProject,
 );
@@ -71,7 +71,7 @@ router.delete(
 router.post(
   '/:id/documents',
   authenticate,
-  authorizeRoles('ADMIN', 'EMPLOYEE'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD', 'EMPLOYEE'),
   upload.single('file'),
   uploadDocument,
 );
@@ -79,7 +79,7 @@ router.post(
 router.delete(
   '/documents/:documentId',
   authenticate,
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   removeDocument,
 );
 

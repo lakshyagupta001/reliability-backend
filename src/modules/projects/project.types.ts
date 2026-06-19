@@ -1,6 +1,7 @@
-import { ProjectScope } from '@prisma/client';
+import type { ProjectScope, ReportStatus } from '@prisma/client';
 
 export type { ProjectScope };
+export type { ReportStatus };
 
 export type SortOrder = 'asc' | 'desc';
 
@@ -18,6 +19,7 @@ export interface ListProjectsQuery {
   categoryId?: string;
   subcategoryId?: string;
   typeId?: string;
+  typeName?: string;
   statusId?: string;
   sortBy?: ProjectSortBy;
   sortOrder?: SortOrder;
@@ -25,7 +27,7 @@ export interface ListProjectsQuery {
   startDateTo?: string;
   endDateFrom?: string;
   endDateTo?: string;
-  hasReportFormat?: boolean;
+  hasPartReport?: boolean;
   hasTestSummary?: boolean;
   missingAnyReport?: boolean;
 }
@@ -191,5 +193,10 @@ export interface PublicProject {
     color: string;
   };
   documents?: PublicProjectDocument[];
-  reports?: { id: string; type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT' | 'CONTROLLER_TEST_LIST'; updatedAt: string }[];
+  reports?: {
+    id: string;
+    type: 'PART_REPORT' | 'SUMMARY_REPORT' | 'TEST_LIST';
+    status: ReportStatus;
+    updatedAt: string;
+  }[];
 }

@@ -19,19 +19,35 @@ export interface ReportDetail {
   formatNumber?: string;
   reportNumber?: string;
   data: Record<string, unknown>;
+  status: 'GENERATED' | 'PENDING_REVIEW' | 'REVIEWED' | 'PENDING_APPROVAL' | 'APPROVED' | 'REVIEW_REJECTED' | 'APPROVAL_REJECTED';
+  checkedByUserId?: string | null;
+  checkedByName?: string | null;
+  approvedByUserId?: string | null;
+  approvedByName?: string | null;
+  lastActionBy?: string | null;
+  lastActionType?: string | null;
+  lastActionAt?: Date | null;
+  rejectionHistory?: any;
   createdBy: string;
   createdAt: Date;
   updatedAt: Date;
+  creator?: { firstName: string; lastName: string; email: string };
+  checker?: { firstName: string; lastName: string; email: string } | null;
+  approver?: { firstName: string; lastName: string; email: string } | null;
 }
 
 export interface CreateReportBody {
   projectId: string;
-  type: 'REPORT_FORMAT' | 'SUMMARY_FORMAT' | 'CONTROLLER_TEST_LIST';
+  type: 'PART_REPORT' | 'SUMMARY_REPORT' | 'TEST_LIST';
   title: string;
   format: string;
   formatNumber?: string;
   reportNumber?: string;
   data: Record<string, unknown>;
+  checkedByUserId?: string;
+  checkedByName?: string;
+  approvedByUserId?: string;
+  approvedByName?: string;
 }
 
 export interface UpdateReportBody {
@@ -39,6 +55,14 @@ export interface UpdateReportBody {
   formatNumber?: string;
   reportNumber?: string;
   data?: Record<string, unknown>;
+  checkedByUserId?: string | null;
+  checkedByName?: string | null;
+  approvedByUserId?: string | null;
+  approvedByName?: string | null;
+}
+
+export interface RejectReportBody {
+  remark: string;
 }
 
 export interface ListReportsQuery {

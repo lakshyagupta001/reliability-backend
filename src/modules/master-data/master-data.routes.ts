@@ -123,14 +123,14 @@ router.get(
 
 router.post(
   '/categories',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateBody(createCategorySchema),
   createCategory,
 );
 
 router.patch(
   '/categories/:id',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(categoryIdParamSchema),
   validateBody(updateCategorySchema),
   updateCategory,
@@ -138,7 +138,7 @@ router.patch(
 
 router.patch(
   '/categories/:id/status',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(categoryIdParamSchema),
   validateBody(updateCategorySchema.pick({ isActive: true })),
   toggleCategoryStatus,
@@ -146,14 +146,14 @@ router.patch(
 
 router.post(
   '/subcategories',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateBody(createSubcategorySchema),
   createSubcategory,
 );
 
 router.patch(
   '/subcategories/:id',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(subcategoryIdParamSchema),
   validateBody(updateSubcategorySchema),
   updateSubcategory,
@@ -161,7 +161,7 @@ router.patch(
 
 router.patch(
   '/subcategories/:id/status',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(subcategoryIdParamSchema),
   validateBody(updateSubcategorySchema.pick({ isActive: true })),
   toggleSubcategoryStatus,
@@ -171,14 +171,14 @@ router.patch(
 
 router.post(
   '/types',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateBody(createTypeSchema),
   createType,
 );
 
 router.patch(
   '/types/:id',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(typeIdParamSchema),
   validateBody(updateTypeSchema),
   updateType,
@@ -186,7 +186,7 @@ router.patch(
 
 router.patch(
   '/types/:id/status',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(typeIdParamSchema),
   validateBody(updateTypeSchema.pick({ isActive: true })),
   toggleTypeStatus,
@@ -194,14 +194,14 @@ router.patch(
 
 router.post(
   '/statuses',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateBody(createStatusSchema),
   createStatus,
 );
 
 router.patch(
   '/statuses/:id',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(statusIdParamSchema),
   validateBody(updateStatusSchema),
   updateStatus,
@@ -209,7 +209,7 @@ router.patch(
 
 router.patch(
   '/statuses/:id/status',
-  authorizeRoles('ADMIN'),
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
   validateParams(statusIdParamSchema),
   validateBody(updateStatusSchema.pick({ isActive: true })),
   toggleStatusActive,

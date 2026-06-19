@@ -1,5 +1,5 @@
 import { prisma } from '../../prisma/prisma.client';
-import { ProjectScope } from '@prisma/client';
+import type { ProjectScope } from '@prisma/client';
 import type { PublicProject, PublicProjectDocument } from './project.types';
 import type {
   CreateProjectBody,
@@ -53,7 +53,7 @@ export interface ProjectWithRelations {
   type?: { id: string; name: string; code: string } | null;
   status?: { id: string; code: string; displayName: string; color: string } | null;
   documents?: ProjectDocumentRecord[];
-  reports?: Array<{ id: string; type: string; updatedAt: Date }>;
+  reports?: Array<{ id: string; type: string; status: string; updatedAt: Date }>;
 }
 
 export interface ProjectDocumentRecord {
@@ -106,6 +106,9 @@ export class ProjectRepository {
     if (query.categoryId) where.categoryId = query.categoryId;
     if (query.subcategoryId) where.subcategoryId = query.subcategoryId;
     if (query.typeId) where.typeId = query.typeId;
+    if (query.typeName) {
+      where.type = { isActive: true, name: query.typeName };
+    }
     if (query.statusId) where.statusId = query.statusId;
     if (query.startDateFrom || query.startDateTo) {
       where.startDate = {};
@@ -120,29 +123,30 @@ export class ProjectRepository {
     
     if (query.missingAnyReport) {
       where.OR = [
-        { reports: { none: { type: 'REPORT_FORMAT' } } },
-        { reports: { none: { type: 'SUMMARY_FORMAT' } } },
+        { reports: { none: { type: 'PART_REPORT' } } },
+        { reports: { none: { type: 'SUMMARY_REPORT' } } },
+        { reports: { none: { type: 'TEST_LIST' } } },
       ];
     } else {
-      if (query.hasReportFormat !== undefined) {
-        where.reports = { ...where.reports, ...(query.hasReportFormat ? { some: { type: 'REPORT_FORMAT' } } : { none: { type: 'REPORT_FORMAT' } }) } as any;
+      if (query.hasPartReport !== undefined) {
+        where.reports = { ...where.reports, ...(query.hasPartReport ? { some: { type: 'PART_REPORT' } } : { none: { type: 'PART_REPORT' } }) } as any;
       }
       if (query.hasTestSummary !== undefined) {
-        // Handle cases where both hasReportFormat and hasTestSummary might be queried together.
+        // Handle cases where both hasPartReport and hasTestSummary might be queried together.
         // Prisma's where.reports doesn't easily support both some and none across different types in a single simple object if they conflict.
         // But we can use AND for complex intersections. Let's build AND array if needed.
         if (!where.AND) where.AND = [];
         const andArray = where.AND as Prisma.ProjectWhereInput[];
         
-        if (query.hasReportFormat !== undefined) {
-          andArray.push(query.hasReportFormat ? { reports: { some: { type: 'REPORT_FORMAT' } } } : { reports: { none: { type: 'REPORT_FORMAT' } } });
+        if (query.hasPartReport !== undefined) {
+          andArray.push(query.hasPartReport ? { reports: { some: { type: 'PART_REPORT' } } } : { reports: { none: { type: 'PART_REPORT' } } });
         }
         if (query.hasTestSummary !== undefined) {
-          andArray.push(query.hasTestSummary ? { reports: { some: { type: 'SUMMARY_FORMAT' } } } : { reports: { none: { type: 'SUMMARY_FORMAT' } } });
+          andArray.push(query.hasTestSummary ? { reports: { some: { type: 'SUMMARY_REPORT' } } } : { reports: { none: { type: 'SUMMARY_REPORT' } } });
         }
         delete where.reports; // Clean up the single assignment if we use AND
-      } else if (query.hasReportFormat !== undefined) {
-        where.reports = query.hasReportFormat ? { some: { type: 'REPORT_FORMAT' } } : { none: { type: 'REPORT_FORMAT' } };
+      } else if (query.hasPartReport !== undefined) {
+        where.reports = query.hasPartReport ? { some: { type: 'PART_REPORT' } } : { none: { type: 'PART_REPORT' } };
       }
     }
 
@@ -159,7 +163,7 @@ export class ProjectRepository {
           type: { select: { id: true, name: true, code: true } },
           status: { select: { id: true, code: true, displayName: true, color: true } },
           _count: { select: { documents: true } },
-          reports: { select: { id: true, type: true, updatedAt: true } },
+          reports: { select: { id: true, type: true, status: true, updatedAt: true } },
         },
       }),
       this.db.count({ where }),

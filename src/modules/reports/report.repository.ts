@@ -15,6 +15,8 @@ export class ReportRepository {
       where: { id },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
+        checker: { select: { firstName: true, lastName: true, email: true } },
+        approver: { select: { firstName: true, lastName: true, email: true } },
       },
     }) as Promise<ReportDetail | null>;
   }
@@ -40,6 +42,8 @@ export class ReportRepository {
         orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder ?? 'desc' },
         include: {
           creator: { select: { firstName: true, lastName: true, email: true } },
+          checker: { select: { firstName: true, lastName: true, email: true } },
+          approver: { select: { firstName: true, lastName: true, email: true } },
         },
       }),
       this.db.count({ where }),
@@ -64,26 +68,72 @@ export class ReportRepository {
         formatNumber: data.formatNumber,
         reportNumber: data.reportNumber,
         data: data.data as import('@prisma/client').Prisma.InputJsonValue,
+        checkedByUserId: data.checkedByUserId,
+        checkedByName: data.checkedByName,
+        approvedByUserId: data.approvedByUserId,
+        approvedByName: data.approvedByName,
+        status: data.checkedByUserId ? 'PENDING_REVIEW' : 'GENERATED',
         createdBy: userId,
       },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
+        checker: { select: { firstName: true, lastName: true, email: true } },
+        approver: { select: { firstName: true, lastName: true, email: true } },
       },
     }) as Promise<ReportDetail>;
   }
 
   async update(id: string, data: UpdateReportBody): Promise<ReportDetail> {
     const updateData: Prisma.ReportUpdateInput = {};
+    const current = data.checkedByUserId !== undefined || data.approvedByUserId !== undefined
+      ? await this.findById(id)
+      : null;
+
     if (data.title !== undefined) updateData.title = data.title;
     if (data.formatNumber !== undefined) updateData.formatNumber = data.formatNumber;
     if (data.reportNumber !== undefined) updateData.reportNumber = data.reportNumber;
     if (data.data !== undefined) updateData.data = data.data as import('@prisma/client').Prisma.InputJsonValue;
+    if (data.checkedByUserId !== undefined) {
+      if (current && ['REVIEWED', 'PENDING_APPROVAL', 'APPROVED'].includes(current.status)) {
+        if (current.checkedByUserId !== data.checkedByUserId) {
+          throw new Error('Cannot change Checked By after report is reviewed');
+        }
+      } else {
+        const checkedId = data.checkedByUserId || null; // treat empty string as null
+        updateData.checker = checkedId ? { connect: { id: checkedId } } : { disconnect: true };
+        if (checkedId && current?.status === 'GENERATED') {
+          updateData.status = 'PENDING_REVIEW';
+        } else if (!checkedId && current?.status === 'PENDING_REVIEW') {
+          updateData.status = 'GENERATED';
+        }
+      }
+    }
+    if (data.checkedByName !== undefined) updateData.checkedByName = data.checkedByName;
+    
+    if (data.approvedByUserId !== undefined) {
+      if (current && current.status === 'APPROVED') {
+        if (current.approvedByUserId !== data.approvedByUserId) {
+          throw new Error('Cannot change Approved By after report is approved');
+        }
+      } else {
+        const approvedId = data.approvedByUserId || null; // treat empty string as null
+        updateData.approver = approvedId ? { connect: { id: approvedId } } : { disconnect: true };
+        if (approvedId && current?.status === 'REVIEWED') {
+          updateData.status = 'PENDING_APPROVAL';
+        } else if (!approvedId && current?.status === 'PENDING_APPROVAL') {
+          updateData.status = 'REVIEWED';
+        }
+      }
+    }
+    if (data.approvedByName !== undefined) updateData.approvedByName = data.approvedByName;
 
     return this.db.update({
       where: { id },
       data: updateData,
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
+        checker: { select: { firstName: true, lastName: true, email: true } },
+        approver: { select: { firstName: true, lastName: true, email: true } },
       },
     }) as Promise<ReportDetail>;
   }
@@ -93,27 +143,29 @@ export class ReportRepository {
   }
 
   async findByProjectId(projectId: string): Promise<{
-    REPORT_FORMAT: ReportDetail | null;
-    SUMMARY_FORMAT: ReportDetail | null;
-    CONTROLLER_TEST_LIST: ReportDetail | null;
+    PART_REPORT: ReportDetail | null;
+    SUMMARY_REPORT: ReportDetail | null;
+    TEST_LIST: ReportDetail | null;
   }> {
     const reports = await this.db.findMany({
       where: { projectId },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
+        checker: { select: { firstName: true, lastName: true, email: true } },
+        approver: { select: { firstName: true, lastName: true, email: true } },
       },
     }) as ReportDetail[];
 
     const result = {
-      REPORT_FORMAT: null as ReportDetail | null,
-      SUMMARY_FORMAT: null as ReportDetail | null,
-      CONTROLLER_TEST_LIST: null as ReportDetail | null,
+      PART_REPORT: null as ReportDetail | null,
+      SUMMARY_REPORT: null as ReportDetail | null,
+      TEST_LIST: null as ReportDetail | null,
     };
 
     reports.forEach((report) => {
-      if (report.type === 'REPORT_FORMAT') result.REPORT_FORMAT = report;
-      if (report.type === 'SUMMARY_FORMAT') result.SUMMARY_FORMAT = report;
-      if (report.type === 'CONTROLLER_TEST_LIST') result.CONTROLLER_TEST_LIST = report;
+      if (report.type === 'PART_REPORT') result.PART_REPORT = report;
+      if (report.type === 'SUMMARY_REPORT') result.SUMMARY_REPORT = report;
+      if (report.type === 'TEST_LIST') result.TEST_LIST = report;
     });
 
     return result;
