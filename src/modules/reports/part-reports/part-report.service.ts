@@ -29,27 +29,83 @@ export class PartReportService {
     _userRole: UserRole,
   ): Promise<PartReportDetail> {
     const isDraft = data.isDraft ?? true;
+
+    // --- UPSERT LOGIC ---
+    const existingReports = await partReportRepository.findByProjectId(data.projectId);
+    if (existingReports.length > 0) {
+      const existing = existingReports[0];
+      const updated = await this.update(existing.id, data as UpdatePartReportBody, userId, _userRole);
+
+      // Ensure TEST_LIST exists and is linked
+      const existingTestList = await prisma.reports.findFirst({
+        where: { type: 'TEST_LIST', projectId: existing.projectId }
+      });
+      if (!existingTestList) {
+        const crypto = require('crypto');
+        await prisma.reports.create({
+          data: {
+            id: crypto.randomUUID(),
+            type: 'TEST_LIST',
+            projectId: existing.projectId,
+            title: 'Test Part List',
+            format: 'TEST_LIST',
+            createdBy: userId,
+            updatedAt: new Date(),
+            data: {
+              partReportId: existing.id,
+              formData: {},
+              isDraft: false,
+              status: 'PENDING',
+            }
+          }
+        });
+      } else {
+        const existingData = (existingTestList.data as Record<string, any>) || {};
+        if (existingData.partReportId !== existing.id) {
+          await prisma.reports.update({
+            where: { id: existingTestList.id },
+            data: { data: { ...existingData, partReportId: existing.id } as Prisma.InputJsonValue }
+          });
+        }
+      }
+      return updated;
+    }
+    // --- END UPSERT LOGIC ---
+
     const report = await partReportRepository.create(data, userId);
 
-    // Auto-create linked TestPartList (always isDraft=false — it manages its own draft state independently)
-    const crypto = require('crypto');
-    await prisma.reports.create({
-      data: {
-        id: crypto.randomUUID(),
-        type: 'TEST_LIST',
-        projectId: report.projectId,
-        title: 'Test Part List',
-        format: 'TEST_LIST',
-        createdBy: userId,
-        updatedAt: new Date(),
-        data: {
-          partReportId: report.id,
-          formData: {},
-          isDraft: false,
-          status: 'PENDING',
-        }
-      },
+    // Ensure TEST_LIST exists and is linked (if it was created by Summary Report first)
+    const existingTestList = await prisma.reports.findFirst({
+      where: { type: 'TEST_LIST', projectId: report.projectId }
     });
+    if (!existingTestList) {
+      const crypto = require('crypto');
+      await prisma.reports.create({
+        data: {
+          id: crypto.randomUUID(),
+          type: 'TEST_LIST',
+          projectId: report.projectId,
+          title: 'Test Part List',
+          format: 'TEST_LIST',
+          createdBy: userId,
+          updatedAt: new Date(),
+          data: {
+            partReportId: report.id,
+            formData: {},
+            isDraft: false,
+            status: 'PENDING',
+          }
+        },
+      });
+    } else {
+      const existingData = (existingTestList.data as Record<string, any>) || {};
+      if (existingData.partReportId !== report.id) {
+        await prisma.reports.update({
+          where: { id: existingTestList.id },
+          data: { data: { ...existingData, partReportId: report.id } as Prisma.InputJsonValue }
+        });
+      }
+    }
 
     // Only create approval history if NOT a draft
     if (!isDraft) {
@@ -77,7 +133,7 @@ export class PartReportService {
 
   async deleteSection(id: string, _userRole: UserRole): Promise<void> {
     const report = await this.getById(id);
-    
+
     // Logical reset deletion if associated TestPartList exists
     if (report.testPartList) {
       const resetUpdateData: Record<string, any> = {
@@ -224,7 +280,7 @@ export class PartReportService {
     const reportData = report.data as Record<string, any>;
     const hasCheckedBy = report.checkedById || reportData?.approvals?.checkedByUserId;
     const nextStatus = hasCheckedBy ? 'PENDING_REVIEW' : 'GENERATED';
-    
+
     await partReportRepository.updateStatus(id, nextStatus, {
       isDraft: false,
       generatedAt: new Date(),

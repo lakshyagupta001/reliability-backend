@@ -1,7 +1,7 @@
 import { prisma } from '../../../prisma/prisma.client';
 import type { Prisma } from '@prisma/client';
-import type { 
-  CreateSummaryReportBody, 
+import type {
+  CreateSummaryReportBody,
   UpdateSummaryReportBody,
   SummaryReportDetail,
   SummaryReportSummary
@@ -13,7 +13,7 @@ const userSelect = { firstName: true, lastName: true, email: true } as const;
 export class SummaryReportRepository {
   private mapToDetail(row: any, allUsers: any[], testSummaryListRow?: any): SummaryReportDetail {
     const data = (row.data as Record<string, any>) || {};
-    
+
     // Manual user mapping since relation is lost
     const creatorUser = allUsers.find(u => u.id === row.createdBy);
     const preparedUser = allUsers.find(u => u.id === data.preparedById);
@@ -93,7 +93,7 @@ export class SummaryReportRepository {
 
   async create(data: CreateSummaryReportBody, userId: string): Promise<SummaryReportDetail> {
     const isDraft = data.isDraft ?? true;
-    
+
     const jsonData = {
       formData: data.data || {},
       preparedById: userId,
@@ -152,7 +152,7 @@ export class SummaryReportRepository {
     if (!row) throw new Error('Not found');
 
     const oldData = (row.data as Record<string, any>) || {};
-    
+
     let rootFormat = row.formatNumber;
     let rootReport = row.reportNumber;
 
@@ -194,7 +194,7 @@ export class SummaryReportRepository {
       where: { createdBy: userId, type: 'SUMMARY_REPORT' },
       orderBy: { updatedAt: 'desc' },
     });
-    
+
     const drafts = rows.filter(r => (r.data as any)?.isDraft === true);
     const users = await prisma.user.findMany({ where: { id: userId }, select: { id: true, ...userSelect } });
     const testLists = await prisma.reports.findMany({ where: { type: 'TEST_LIST' } });
