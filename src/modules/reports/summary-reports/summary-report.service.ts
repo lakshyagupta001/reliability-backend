@@ -24,48 +24,12 @@ export class SummaryReportService {
   async create(data: CreateSummaryReportBody, userId: string) {
     const isDraft = data.isDraft ?? true;
 
-    // --- UPSERT LOGIC ---
-    const existingReport = await summaryReportRepository.findByProjectId(data.projectId);
-    if (existingReport) {
-      const existing = existingReport;
-      const updated = await this.update(existing.id, data as UpdateSummaryReportBody, userId);
-
-      // Ensure TEST_LIST exists and is linked
-      const existingTestList = await prisma.reports.findFirst({
-        where: { type: 'TEST_LIST', projectId: existing.projectId }
-      });
-      if (!existingTestList) {
-        await summaryReportRepository.createLinkedTestSummaryList(existing.id, data.projectId, userId);
-      } else {
-        const existingData = (existingTestList.data as Record<string, any>) || {};
-        if (existingData.summaryReportId !== existing.id) {
-          await prisma.reports.update({
-            where: { id: existingTestList.id },
-            data: { data: { ...existingData, summaryReportId: existing.id } as Prisma.InputJsonValue }
-          });
-        }
-      }
-      return updated;
-    }
-    // --- END UPSERT LOGIC ---
+    const existing = await summaryReportRepository.existsByProjectId(data.projectId);
+    if (existing) throw new ConflictError('A Summary Report already exists for this project');
 
     const sr = await summaryReportRepository.create(data, userId);
 
-    // Ensure TEST_LIST exists and is linked (if it was created by Part Report first)
-    const existingTestList = await prisma.reports.findFirst({
-      where: { type: 'TEST_LIST', projectId: sr.projectId }
-    });
-    if (!existingTestList) {
-      await summaryReportRepository.createLinkedTestSummaryList(sr.id, data.projectId, userId);
-    } else {
-      const existingData = (existingTestList.data as Record<string, any>) || {};
-      if (existingData.summaryReportId !== sr.id) {
-        await prisma.reports.update({
-          where: { id: existingTestList.id },
-          data: { data: { ...existingData, summaryReportId: sr.id } as Prisma.InputJsonValue }
-        });
-      }
-    }
+    await summaryReportRepository.createLinkedTestSummaryList(sr.id, data.projectId, userId);
 
     if (!isDraft) {
       await summaryReportRepository.createApprovalHistory(sr.id, userId, 'Created', 'Completed');

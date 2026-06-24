@@ -186,7 +186,6 @@ model reports {
   users        User       @relation(fields: [createdBy], references: [id])
   projects     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@unique([projectId, type])
   @@index([createdAt])
   @@index([createdBy])
   @@index([projectId])
