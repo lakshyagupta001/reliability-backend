@@ -25,9 +25,9 @@ export class SummaryReportService {
     const isDraft = data.isDraft ?? true;
 
     // --- UPSERT LOGIC ---
-    const existingReports = await summaryReportRepository.findByProjectId(data.projectId);
-    if (existingReports.length > 0) {
-      const existing = existingReports[0];
+    const existingReport = await summaryReportRepository.findByProjectId(data.projectId);
+    if (existingReport) {
+      const existing = existingReport;
       const updated = await this.update(existing.id, data as UpdateSummaryReportBody, userId);
 
       // Ensure TEST_LIST exists and is linked
