@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import { PrismaClient, UserRole, ProjectScope } from '@prisma/client';
+import crypto from 'crypto';
 
 const prisma = new PrismaClient();
 
@@ -125,24 +126,39 @@ async function upsertMasterData(
   level: 'CATEGORY' | 'SUBCATEGORY' | 'TYPE',
   parentId?: string,
 ) {
-  const existing = await prisma.masterData.findFirst({
-    where: {
-      name: { equals: name, mode: 'insensitive' },
-      level,
-      parentId: parentId ?? null,
-    },
-  });
+  const code = name.toUpperCase().replace(/[^A-Z0-9]/g, '_').substring(0, 50);
 
-  if (existing) {
-    return prisma.masterData.update({
-      where: { id: existing.id },
-      data: { isActive: true },
+  if (level === 'CATEGORY') {
+    const existing = await prisma.categories.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' } },
+    });
+    if (existing) {
+      return prisma.categories.update({ where: { id: existing.id }, data: { isActive: true } });
+    }
+    return prisma.categories.create({
+      data: { id: crypto.randomUUID(), name, code, isActive: true, updatedAt: new Date() },
+    });
+  } else if (level === 'SUBCATEGORY') {
+    const existing = await prisma.subcategories.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' }, categoryId: parentId },
+    });
+    if (existing) {
+      return prisma.subcategories.update({ where: { id: existing.id }, data: { isActive: true } });
+    }
+    return prisma.subcategories.create({
+      data: { id: crypto.randomUUID(), name, code, categoryId: parentId!, isActive: true, updatedAt: new Date() },
+    });
+  } else if (level === 'TYPE') {
+    const existing = await prisma.types.findFirst({
+      where: { name: { equals: name, mode: 'insensitive' }, subcategoryId: parentId },
+    });
+    if (existing) {
+      return prisma.types.update({ where: { id: existing.id }, data: { isActive: true } });
+    }
+    return prisma.types.create({
+      data: { id: crypto.randomUUID(), name, code, subcategoryId: parentId!, isActive: true, updatedAt: new Date() },
     });
   }
-
-  return prisma.masterData.create({
-    data: { name, level, parentId: parentId ?? null, isActive: true },
-  });
 }
 
 async function main() {
@@ -191,8 +207,8 @@ async function main() {
   // CAG → CHILLERS     (leaf is SubCategory — no types)
   const cag = await upsertMasterData('CAG', 'CATEGORY');
   const ibgcag = await upsertMasterData('IBGCAG', 'SUBCATEGORY', cag.id);
-  await upsertMasterData('ATW', 'TYPE', ibgcag.id);
-  await upsertMasterData('DUCTED', 'TYPE', ibgcag.id);
+  const atw = await upsertMasterData('ATW', 'TYPE', ibgcag.id);
+  const ducted = await upsertMasterData('DUCTED', 'TYPE', ibgcag.id);
   const vrf = await upsertMasterData('VRF', 'SUBCATEGORY', cag.id);
   const chillers = await upsertMasterData('CHILLERS', 'SUBCATEGORY', cag.id);
 
@@ -203,6 +219,12 @@ async function main() {
   const csd = await upsertMasterData('CSD', 'SUBCATEGORY', crbg.id);
   const waterCooler = await upsertMasterData('WATER COOLER', 'SUBCATEGORY', crbg.id);
   const deepFreezer = await upsertMasterData('DEEP FREEZER', 'SUBCATEGORY', crbg.id);
+
+  const vrfDefault = await upsertMasterData('DEFAULT', 'TYPE', vrf.id);
+  const chillersDefault = await upsertMasterData('DEFAULT', 'TYPE', chillers.id);
+  const csdDefault = await upsertMasterData('DEFAULT', 'TYPE', csd.id);
+  const waterCoolerDefault = await upsertMasterData('DEFAULT', 'TYPE', waterCooler.id);
+  const deepFreezerDefault = await upsertMasterData('DEFAULT', 'TYPE', deepFreezer.id);
 
   console.log('Master data hierarchy seeded:');
   console.log('  CPAG → RAD → HP, SRICITY');
@@ -249,19 +271,16 @@ async function main() {
   // 2-level: categoryId=CRBG, subcategoryId=WATER COOLER, typeId=null
   // 2-level: categoryId=CRBG, subcategoryId=DEEP FREEZER, typeId=null
 
-  const atw = await prisma.masterData.findFirst({ where: { name: 'ATW', level: 'TYPE' } });
-  const ducted = await prisma.masterData.findFirst({ where: { name: 'DUCTED', level: 'TYPE' } });
-
   const hierarchyOptions = [
     { categoryId: cpag.id, subcategoryId: rad.id, typeId: hp.id, label: 'CPAG/RAD/HP' },
     { categoryId: cpag.id, subcategoryId: rad.id, typeId: sricity.id, label: 'CPAG/RAD/SRICITY' },
-    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: atw?.id || null, label: 'CAG/IBGCAG/ATW' },
-    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: ducted?.id || null, label: 'CAG/IBGCAG/DUCTED' },
-    { categoryId: cag.id, subcategoryId: vrf.id, typeId: null, label: 'CAG/VRF' },
-    { categoryId: cag.id, subcategoryId: chillers.id, typeId: null, label: 'CAG/CHILLERS' },
-    { categoryId: crbg.id, subcategoryId: csd.id, typeId: null, label: 'CRBG/CSD' },
-    { categoryId: crbg.id, subcategoryId: waterCooler.id, typeId: null, label: 'CRBG/WATER COOLER' },
-    { categoryId: crbg.id, subcategoryId: deepFreezer.id, typeId: null, label: 'CRBG/DEEP FREEZER' },
+    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: atw.id, label: 'CAG/IBGCAG/ATW' },
+    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: ducted.id, label: 'CAG/IBGCAG/DUCTED' },
+    { categoryId: cag.id, subcategoryId: vrf.id, typeId: vrfDefault.id, label: 'CAG/VRF' },
+    { categoryId: cag.id, subcategoryId: chillers.id, typeId: chillersDefault.id, label: 'CAG/CHILLERS' },
+    { categoryId: crbg.id, subcategoryId: csd.id, typeId: csdDefault.id, label: 'CRBG/CSD' },
+    { categoryId: crbg.id, subcategoryId: waterCooler.id, typeId: waterCoolerDefault.id, label: 'CRBG/WATER COOLER' },
+    { categoryId: crbg.id, subcategoryId: deepFreezer.id, typeId: deepFreezerDefault.id, label: 'CRBG/DEEP FREEZER' },
   ];
 
   const scopes = Object.values(ProjectScope);

@@ -99,9 +99,7 @@ export class ProjectRepository {
       // Only show projects whose master data hierarchy is entirely active
       category: { isActive: true },
       subcategory: { isActive: true },
-      AND: [
-        { OR: [{ typeId: null }, { type: { isActive: true } }] }
-      ]
+      type: { isActive: true },
     };
     if (query.search) {
       where.name = { contains: query.search, mode: 'insensitive' };
@@ -125,27 +123,24 @@ export class ProjectRepository {
     }
     
     if (query.missingAnyReport) {
-      // Filter to projects that have no part reports or no summary report
       where.OR = [
-        { partReports: { none: {} } },
-        { summaryReport: null },
+        { reports: { none: { type: 'PART_REPORT' } } },
+        { reports: { none: { type: 'SUMMARY_REPORT' } } },
       ];
     } else {
       if (query.hasPartReport !== undefined) {
-        where.partReports = query.hasPartReport ? { some: {} } : { none: {} };
+        where.reports = query.hasPartReport ? { some: { type: 'PART_REPORT' } } : { none: { type: 'PART_REPORT' } };
       }
       if (query.hasTestSummary !== undefined) {
         if (!where.AND) where.AND = [];
         const andArray = where.AND as Prisma.ProjectWhereInput[];
         if (query.hasPartReport !== undefined) {
-          andArray.push(query.hasPartReport ? { partReports: { some: {} } } : { partReports: { none: {} } });
+          andArray.push(query.hasPartReport ? { reports: { some: { type: 'PART_REPORT' } } } : { reports: { none: { type: 'PART_REPORT' } } });
         }
         if (query.hasTestSummary !== undefined) {
-          andArray.push(query.hasTestSummary ? { summaryReport: { isNot: null } } : { summaryReport: null });
+          andArray.push(query.hasTestSummary ? { reports: { some: { type: 'SUMMARY_REPORT' } } } : { reports: { none: { type: 'SUMMARY_REPORT' } } });
         }
-        delete (where as any).partReports;
-      } else if (query.hasPartReport !== undefined) {
-        where.partReports = query.hasPartReport ? { some: {} } : { none: {} };
+        delete (where as any).reports;
       }
     }
 
@@ -162,15 +157,35 @@ export class ProjectRepository {
           type: { select: { id: true, name: true } },
           status: { select: { id: true, code: true, displayName: true, color: true } },
           _count: { select: { documents: true } },
-          partReports: { select: { id: true, reportStatus: true, reportName: true, updatedAt: true, testPartList: { select: { id: true, status: true } } } },
-          summaryReport: { select: { id: true, reportStatus: true, updatedAt: true, testSummaryList: { select: { id: true, status: true } } } },
+          reports: { select: { id: true, type: true, data: true, updatedAt: true } },
         },
       }),
       this.db.count({ where }),
     ]);
 
+    const mappedRows = rows.map((row: any) => {
+      const partReports = row.reports.filter((r: any) => r.type === 'PART_REPORT').map((r: any) => ({
+        id: r.id,
+        reportStatus: r.data?.reportStatus || 'Draft',
+        reportName: r.data?.reportName || r.title || '',
+        updatedAt: r.updatedAt,
+        testPartList: r.data?.testPartList ? { id: r.data.testPartList.id, status: r.data.testPartList.status } : null
+      }));
+      const summaryReportRaw = row.reports.find((r: any) => r.type === 'SUMMARY_REPORT');
+      const summaryReport = summaryReportRaw ? {
+        id: summaryReportRaw.id,
+        reportStatus: summaryReportRaw.data?.reportStatus || 'Draft',
+        updatedAt: summaryReportRaw.updatedAt,
+        testSummaryList: summaryReportRaw.data?.testSummaryList ? { id: summaryReportRaw.data.testSummaryList.id, status: summaryReportRaw.data.testSummaryList.status } : null
+      } : null;
+      
+      const newRow = { ...row, partReports, summaryReport };
+      delete newRow.reports;
+      return newRow;
+    });
+
     return {
-      rows: rows as ProjectWithRelations[],
+      rows: mappedRows as ProjectWithRelations[],
       total,
       page,
       limit,

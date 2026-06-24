@@ -2,131 +2,226 @@ import { prisma } from '../../prisma/prisma.client';
 import type { MasterDataLevel, Prisma } from '@prisma/client';
 import type { CreateMasterDataBody, UpdateMasterDataBody, ListMasterDataQuery } from './master-data.types';
 
+// The shape that master-data.service.ts expects
+type RawNode = {
+  id: string;
+  name: string;
+  level: MasterDataLevel;
+  parentId: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  children?: RawNode[];
+  _count?: {
+    projectsAsCategory: number;
+    projectsAsSubcategory: number;
+    projectsAsType: number;
+  };
+};
+
 export class MasterDataRepository {
   // --------------------------------------------------------------------------
   // Reads
   // --------------------------------------------------------------------------
 
-  async findById(id: string) {
-    return prisma.masterData.findUnique({
+  async findById(id: string): Promise<RawNode | null> {
+    const cat = await prisma.categories.findUnique({
       where: { id },
       include: {
-        children: { orderBy: { name: 'asc' } },
-        _count: {
-          select: { projectsAsCategory: true, projectsAsSubcategory: true, projectsAsType: true },
-        },
-      },
+        subcategories: { orderBy: { name: 'asc' } },
+        _count: { select: { projectsAsCategory: true } }
+      }
     });
+    if (cat) return this.mapCategory(cat);
+
+    const sub = await prisma.subcategories.findUnique({
+      where: { id },
+      include: {
+        types: { orderBy: { name: 'asc' } },
+        _count: { select: { projectsAsSubcategory: true } }
+      }
+    });
+    if (sub) return this.mapSubcategory(sub);
+
+    const typ = await prisma.types.findUnique({
+      where: { id },
+      include: { _count: { select: { projectsAsType: true } } }
+    });
+    if (typ) return this.mapType(typ);
+
+    return null;
   }
 
-  async findByIdSimple(id: string) {
-    return prisma.masterData.findUnique({
+  async findByIdSimple(id: string): Promise<RawNode | null> {
+    const cat = await prisma.categories.findUnique({
       where: { id },
-      include: {
-        _count: {
-          select: { projectsAsCategory: true, projectsAsSubcategory: true, projectsAsType: true },
-        },
-      },
+      include: { _count: { select: { projectsAsCategory: true } } }
     });
+    if (cat) return this.mapCategory(cat);
+
+    const sub = await prisma.subcategories.findUnique({
+      where: { id },
+      include: { _count: { select: { projectsAsSubcategory: true } } }
+    });
+    if (sub) return this.mapSubcategory(sub);
+
+    const typ = await prisma.types.findUnique({
+      where: { id },
+      include: { _count: { select: { projectsAsType: true } } }
+    });
+    if (typ) return this.mapType(typ);
+
+    return null;
   }
 
   async findAll(query: ListMasterDataQuery) {
     const { page, limit, search, level, parentId, isActive } = query;
     const skip = (page - 1) * limit;
 
-    const where: Prisma.MasterDataWhereInput = {};
-    if (level) where.level = level;
-    if (parentId !== undefined) where.parentId = parentId === 'null' ? null : parentId;
-    if (isActive !== undefined) where.isActive = isActive;
-    if (search) {
-      where.name = { contains: search, mode: 'insensitive' };
+    let rows: RawNode[] = [];
+    let total = 0;
+
+    if (!level || level === 'CATEGORY') {
+      const where: Prisma.categoriesWhereInput = {};
+      if (isActive !== undefined) where.isActive = isActive;
+      if (search) where.name = { contains: search, mode: 'insensitive' };
+      
+      if (!level || !parentId) {
+        const [cats, catTotal] = await Promise.all([
+          prisma.categories.findMany({
+            where, skip: level ? skip : undefined, take: level ? limit : undefined, orderBy: { name: 'asc' },
+            include: { _count: { select: { projectsAsCategory: true } } }
+          }),
+          prisma.categories.count({ where })
+        ]);
+        rows.push(...cats.map(c => this.mapCategory(c)));
+        total += catTotal;
+      }
     }
 
-    const [rows, total] = await Promise.all([
-      prisma.masterData.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: [{ level: 'asc' }, { name: 'asc' }],
-        include: {
-          children: { orderBy: { name: 'asc' } },
-          _count: {
-            select: { projectsAsCategory: true, projectsAsSubcategory: true, projectsAsType: true },
-          },
-        },
-      }),
-      prisma.masterData.count({ where }),
-    ]);
+    if (!level || level === 'SUBCATEGORY') {
+      const where: Prisma.subcategoriesWhereInput = {};
+      if (isActive !== undefined) where.isActive = isActive;
+      if (search) where.name = { contains: search, mode: 'insensitive' };
+      if (parentId !== undefined) where.categoryId = parentId === 'null' ? '' : parentId;
+      
+      const [subs, subTotal] = await Promise.all([
+        prisma.subcategories.findMany({
+          where, skip: level ? skip : undefined, take: level ? limit : undefined, orderBy: { name: 'asc' },
+          include: { _count: { select: { projectsAsSubcategory: true } } }
+        }),
+        prisma.subcategories.count({ where })
+      ]);
+      rows.push(...subs.map(s => this.mapSubcategory(s)));
+      total += subTotal;
+    }
+
+    if (!level || level === 'TYPE') {
+      const where: Prisma.typesWhereInput = {};
+      if (isActive !== undefined) where.isActive = isActive;
+      if (search) where.name = { contains: search, mode: 'insensitive' };
+      if (parentId !== undefined) where.subcategoryId = parentId === 'null' ? '' : parentId;
+      
+      const [typs, typTotal] = await Promise.all([
+        prisma.types.findMany({
+          where, skip: level ? skip : undefined, take: level ? limit : undefined, orderBy: { name: 'asc' },
+          include: { _count: { select: { projectsAsType: true } } }
+        }),
+        prisma.types.count({ where })
+      ]);
+      rows.push(...typs.map(t => this.mapType(t)));
+      total += typTotal;
+    }
+
+    if (!level) {
+      // Manual pagination if querying all levels
+      rows = rows.slice(skip, skip + limit);
+    }
 
     return { rows, total, page, limit, totalPages: Math.ceil(total / limit) };
   }
 
   async findCategories(isActive?: boolean) {
-    return prisma.masterData.findMany({
-      where: {
-        level: 'CATEGORY',
-        ...(isActive !== undefined ? { isActive } : {}),
-      },
+    const cats = await prisma.categories.findMany({
+      where: isActive !== undefined ? { isActive } : {},
       orderBy: { name: 'asc' },
-      include: {
-        _count: {
-          select: { projectsAsCategory: true, projectsAsSubcategory: true, projectsAsType: true },
-        },
-      },
+      include: { _count: { select: { projectsAsCategory: true } } }
     });
+    return cats.map(c => this.mapCategory(c));
   }
 
-  async findChildren(parentId: string, isActive?: boolean) {
-    return prisma.masterData.findMany({
-      where: {
-        parentId,
-        ...(isActive !== undefined ? { isActive } : {}),
-      },
-      orderBy: { name: 'asc' },
-      include: {
-        children: { orderBy: { name: 'asc' } },
-        _count: {
-          select: { projectsAsCategory: true, projectsAsSubcategory: true, projectsAsType: true },
-        },
-      },
-    });
+  async findChildren(parentId: string, isActive?: boolean): Promise<RawNode[]> {
+    // Parent could be a category or a subcategory
+    const parentCat = await prisma.categories.findUnique({ where: { id: parentId } });
+    if (parentCat) {
+      const subs = await prisma.subcategories.findMany({
+        where: { categoryId: parentId, ...(isActive !== undefined ? { isActive } : {}) },
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { projectsAsSubcategory: true } } }
+      });
+      return subs.map(s => this.mapSubcategory(s));
+    }
+
+    const parentSub = await prisma.subcategories.findUnique({ where: { id: parentId } });
+    if (parentSub) {
+      const typs = await prisma.types.findMany({
+        where: { subcategoryId: parentId, ...(isActive !== undefined ? { isActive } : {}) },
+        orderBy: { name: 'asc' },
+        include: { _count: { select: { projectsAsType: true } } }
+      });
+      return typs.map(t => this.mapType(t));
+    }
+
+    return [];
   }
 
-  /**
-   * Returns the full hierarchy tree: all categories with nested
-   * subcategories and their nested types.
-   */
-  async getFullTree(isActive?: boolean) {
-    const categories = await prisma.masterData.findMany({
-      where: {
-        level: 'CATEGORY',
-        ...(isActive !== undefined ? { isActive } : {}),
-      },
+  async getFullTree(isActive?: boolean): Promise<RawNode[]> {
+    const categories = await prisma.categories.findMany({
+      where: isActive !== undefined ? { isActive } : undefined,
       orderBy: { name: 'asc' },
       include: {
-        children: {
+        subcategories: {
           where: isActive !== undefined ? { isActive } : undefined,
           orderBy: { name: 'asc' },
           include: {
-            children: {
+            types: {
               where: isActive !== undefined ? { isActive } : undefined,
               orderBy: { name: 'asc' },
-            },
-          },
-        },
-      },
+            }
+          }
+        }
+      }
     });
-    return categories;
+
+    return categories.map(c => ({
+      ...this.mapCategory(c),
+      children: c.subcategories.map(s => ({
+        ...this.mapSubcategory(s),
+        children: s.types.map(t => this.mapType(t))
+      }))
+    }));
   }
 
   async findByNameAndParent(name: string, parentId: string | null, level: MasterDataLevel) {
-    return prisma.masterData.findFirst({
-      where: {
-        name: { equals: name, mode: 'insensitive' },
-        parentId: parentId ?? null,
-        level,
-      },
-    });
+    if (level === 'CATEGORY') {
+      const cat = await prisma.categories.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } }
+      });
+      return cat ? this.mapCategory(cat) : null;
+    }
+    if (level === 'SUBCATEGORY') {
+      const sub = await prisma.subcategories.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' }, categoryId: parentId || '' }
+      });
+      return sub ? this.mapSubcategory(sub) : null;
+    }
+    if (level === 'TYPE') {
+      const typ = await prisma.types.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' }, subcategoryId: parentId || '' }
+      });
+      return typ ? this.mapType(typ) : null;
+    }
+    return null;
   }
 
   // --------------------------------------------------------------------------
@@ -134,74 +229,160 @@ export class MasterDataRepository {
   // --------------------------------------------------------------------------
 
   async create(data: CreateMasterDataBody) {
-    return prisma.masterData.create({
-      data: {
-        name: data.name,
-        level: data.level,
-        parentId: data.parentId ?? null,
-      },
-    });
+    const code = data.name.toUpperCase().replace(/[^A-Z0-9]/g, '_').substring(0, 50);
+    const crypto = require('crypto');
+    const id = crypto.randomUUID();
+    
+    if (data.level === 'CATEGORY') {
+      const cat = await prisma.categories.create({
+        data: { id, name: data.name, code, isActive: true, updatedAt: new Date() }
+      });
+      return this.mapCategory(cat);
+    }
+    if (data.level === 'SUBCATEGORY') {
+      const sub = await prisma.subcategories.create({
+        data: { id, name: data.name, code, categoryId: data.parentId!, isActive: true, updatedAt: new Date() }
+      });
+      return this.mapSubcategory(sub);
+    }
+    if (data.level === 'TYPE') {
+      const typ = await prisma.types.create({
+        data: { id, name: data.name, code, subcategoryId: data.parentId!, isActive: true, updatedAt: new Date() }
+      });
+      return this.mapType(typ);
+    }
+    throw new Error('Invalid level');
   }
 
   async update(id: string, data: UpdateMasterDataBody) {
-    return prisma.masterData.update({
-      where: { id },
-      data: { name: data.name },
-    });
+    const node = await this.findByIdSimple(id);
+    if (!node) throw new Error('Not found');
+
+    if (node.level === 'CATEGORY') {
+      const cat = await prisma.categories.update({ where: { id }, data: { name: data.name, updatedAt: new Date() } });
+      return this.mapCategory(cat);
+    }
+    if (node.level === 'SUBCATEGORY') {
+      const sub = await prisma.subcategories.update({ where: { id }, data: { name: data.name, updatedAt: new Date() } });
+      return this.mapSubcategory(sub);
+    }
+    if (node.level === 'TYPE') {
+      const typ = await prisma.types.update({ where: { id }, data: { name: data.name, updatedAt: new Date() } });
+      return this.mapType(typ);
+    }
+    throw new Error('Invalid level');
   }
 
-  /**
-   * Recursively deactivate a node and ALL its descendants.
-   * Uses a CTE-based recursive query for efficiency.
-   */
   async cascadeDeactivate(id: string): Promise<void> {
-    await prisma.$transaction(async (tx) => {
-      // Collect all descendant IDs recursively
-      const allIds = await this._collectDescendants(id, tx as typeof prisma);
-      allIds.push(id);
+    const node = await this.findByIdSimple(id);
+    if (!node) return;
 
-      await tx.masterData.updateMany({
-        where: { id: { in: allIds } },
-        data: { isActive: false },
-      });
-    });
+    if (node.level === 'CATEGORY') {
+      await prisma.categories.update({ where: { id }, data: { isActive: false } });
+      await prisma.subcategories.updateMany({ where: { categoryId: id }, data: { isActive: false } });
+      const subs = await prisma.subcategories.findMany({ where: { categoryId: id }, select: { id: true } });
+      if (subs.length > 0) {
+        await prisma.types.updateMany({ where: { subcategoryId: { in: subs.map(s => s.id) } }, data: { isActive: false } });
+      }
+    } else if (node.level === 'SUBCATEGORY') {
+      await prisma.subcategories.update({ where: { id }, data: { isActive: false } });
+      await prisma.types.updateMany({ where: { subcategoryId: id }, data: { isActive: false } });
+    } else if (node.level === 'TYPE') {
+      await prisma.types.update({ where: { id }, data: { isActive: false } });
+    }
   }
 
-  /**
-   * Activate a single node only — children remain at their current state.
-   */
   async activate(id: string) {
-    return prisma.masterData.update({
-      where: { id },
-      data: { isActive: true },
-    });
+    const node = await this.findByIdSimple(id);
+    if (!node) throw new Error('Not found');
+
+    if (node.level === 'CATEGORY') {
+      const cat = await prisma.categories.update({ where: { id }, data: { isActive: true } });
+      return this.mapCategory(cat);
+    }
+    if (node.level === 'SUBCATEGORY') {
+      const sub = await prisma.subcategories.update({ where: { id }, data: { isActive: true } });
+      return this.mapSubcategory(sub);
+    }
+    if (node.level === 'TYPE') {
+      const typ = await prisma.types.update({ where: { id }, data: { isActive: true } });
+      return this.mapType(typ);
+    }
+    throw new Error('Invalid level');
   }
 
   async delete(id: string) {
-    return prisma.masterData.delete({
-      where: { id },
-    });
+    const node = await this.findByIdSimple(id);
+    if (!node) return;
+
+    if (node.level === 'CATEGORY') {
+      await prisma.categories.delete({ where: { id } });
+    } else if (node.level === 'SUBCATEGORY') {
+      await prisma.subcategories.delete({ where: { id } });
+    } else if (node.level === 'TYPE') {
+      await prisma.types.delete({ where: { id } });
+    }
   }
 
   // --------------------------------------------------------------------------
   // Helpers
   // --------------------------------------------------------------------------
 
-  private async _collectDescendants(parentId: string, tx: typeof prisma): Promise<string[]> {
-    const children = await tx.masterData.findMany({
-      where: { parentId },
-      select: { id: true },
-    });
-    const ids = children.map((c) => c.id);
-    for (const child of children) {
-      const nested = await this._collectDescendants(child.id, tx);
-      ids.push(...nested);
-    }
-    return ids;
+  private mapCategory(c: any): RawNode {
+    return {
+      id: c.id,
+      name: c.name,
+      level: 'CATEGORY',
+      parentId: null,
+      isActive: c.isActive,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+      children: c.subcategories ? c.subcategories.map((s: any) => this.mapSubcategory(s)) : undefined,
+      _count: {
+        projectsAsCategory: c._count?.projectsAsCategory || 0,
+        projectsAsSubcategory: 0,
+        projectsAsType: 0,
+      }
+    };
+  }
+
+  private mapSubcategory(s: any): RawNode {
+    return {
+      id: s.id,
+      name: s.name,
+      level: 'SUBCATEGORY',
+      parentId: s.categoryId,
+      isActive: s.isActive,
+      createdAt: s.createdAt,
+      updatedAt: s.updatedAt,
+      children: s.types ? s.types.map((t: any) => this.mapType(t)) : undefined,
+      _count: {
+        projectsAsCategory: 0,
+        projectsAsSubcategory: s._count?.projectsAsSubcategory || 0,
+        projectsAsType: 0,
+      }
+    };
+  }
+
+  private mapType(t: any): RawNode {
+    return {
+      id: t.id,
+      name: t.name,
+      level: 'TYPE',
+      parentId: t.subcategoryId,
+      isActive: t.isActive,
+      createdAt: t.createdAt,
+      updatedAt: t.updatedAt,
+      _count: {
+        projectsAsCategory: 0,
+        projectsAsSubcategory: 0,
+        projectsAsType: t._count?.projectsAsType || 0,
+      }
+    };
   }
 
   // --------------------------------------------------------------------------
-  // Status Master (unchanged — kept separate)
+  // Status Master (unchanged)
   // --------------------------------------------------------------------------
 
   async findStatusById(id: string) {

@@ -7,80 +7,17 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ============================================================================
-// ENUMS
-// ============================================================================
-
-enum UserRole {
-  EMPLOYEE
-  TEAM_LEAD
-  MANAGER
-}
-
-enum ProjectScope {
-  DOMESTIC
-  OVERSEAS
-}
-
-enum ReportStatus {
-  PENDING
-  GENERATED
-  PENDING_REVIEW
-  REVIEWED
-  PENDING_APPROVAL
-  APPROVED
-  REVIEW_REJECTED
-  APPROVAL_REJECTED
-}
-
-enum MasterDataLevel {
-  CATEGORY
-  SUBCATEGORY
-  TYPE
-}
-
-// ============================================================================
-// MASTER DATA MODELS
-// ============================================================================
-
-/// Unified self-referencing master data table.
-/// Supports 1-level (Category only), 2-level (Category → SubCategory),
-/// and 3-level (Category → SubCategory → Type) hierarchies dynamically.
-model MasterData {
-  id        String          @id @default(uuid()) @db.Uuid
-  name      String          @db.VarChar(100)
-  level     MasterDataLevel
-  parentId  String?         @db.Uuid
-  isActive  Boolean         @default(true)
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-
-  parent   MasterData?  @relation("MasterDataHierarchy", fields: [parentId], references: [id], onDelete: Restrict)
-  children MasterData[] @relation("MasterDataHierarchy")
-
-  // Projects can reference any level node
-  projectsAsCategory    Project[] @relation("ProjectCategory")
-  projectsAsSubcategory Project[] @relation("ProjectSubcategory")
-  projectsAsType        Project[] @relation("ProjectType")
-
-  @@index([parentId])
-  @@index([level])
-  @@index([isActive])
-  @@map("master_data")
-}
-
 model StatusMaster {
-  id          String   @id @default(uuid()) @db.Uuid
-  code        String   @unique @db.VarChar(50)
-  displayName String   @db.VarChar(100)
-  color       String   @default("#6B7280") @db.VarChar(20)
-  isActive    Boolean  @default(true)
-  isSystem    Boolean  @default(false)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  projects      Project[]
+  id            String                 @id @default(uuid()) @db.Uuid
+  code          String                 @unique @db.VarChar(50)
+  displayName   String                 @db.VarChar(100)
+  color         String                 @default("#6B7280") @db.VarChar(20)
+  isActive      Boolean                @default(true)
+  isSystem      Boolean                @default(false)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
   statusHistory ProjectStatusHistory[]
+  projects      Project[]
 
   @@index([code])
   @@index([isActive])
@@ -88,48 +25,20 @@ model StatusMaster {
   @@map("status_master")
 }
 
-// ============================================================================
-// USER & AUTH
-// ============================================================================
-
 model User {
-  id        String   @id @default(uuid()) @db.Uuid
-  email     String   @unique @db.VarChar(255)
-  password  String   @db.VarChar(255)
-  role      UserRole @default(EMPLOYEE)
-  firstName String   @db.VarChar(100)
-  lastName  String   @db.VarChar(100)
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  projects              Project[]
-
-  // Part Report relations
-  partReportsCreated    PartReport[]                 @relation("PartReportCreatedBy")
-  partReportsPrepared   PartReport[]                 @relation("PartReportPreparedBy")
-  partReportsChecked    PartReport[]                 @relation("PartReportChecker")
-  partReportsApproved   PartReport[]                 @relation("PartReportApprover")
-  partReportApprovalHistory PartReportApprovalHistory[]
-
-  // Test Part List relations
-  testPartListsChecked        TestPartList[]               @relation("TestPartListChecker")
-  testPartListsApproved       TestPartList[]               @relation("TestPartListApprover")
-  testPartListApprovalHistory TestPartListApprovalHistory[]
-
-  // Summary Report relations
-  summaryReportsPrepared  SummaryReport[]              @relation("SummaryReportPreparedBy")
-  summaryReportsChecked   SummaryReport[]              @relation("SummaryReportChecker")
-  summaryReportsApproved  SummaryReport[]              @relation("SummaryReportApprover")
-  summaryReportApprovalHistory SummaryReportApprovalHistory[]
-
-  // Test Summary List relations
-  testSummaryListsChecked        TestSummaryList[]              @relation("TestSummaryListChecker")
-  testSummaryListsApproved       TestSummaryList[]              @relation("TestSummaryListApprover")
-  testSummaryListApprovalHistory TestSummaryListApprovalHistory[]
-
-  authSessions          AuthSession[]
-  uploadedDocuments     ProjectDocument[]
+  id                String            @id @default(uuid()) @db.Uuid
+  email             String            @unique @db.VarChar(255)
+  password          String            @db.VarChar(255)
+  role              UserRole          @default(EMPLOYEE)
+  firstName         String            @db.VarChar(100)
+  lastName          String            @db.VarChar(100)
+  isActive          Boolean           @default(true)
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  authSessions      AuthSession[]
+  uploadedDocuments ProjectDocument[]
+  projects          Project[]
+  reports           reports[]
 
   @@index([email])
   @@index([role])
@@ -145,8 +54,7 @@ model AuthSession {
   revokedAt DateTime?
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([tokenHash])
@@ -155,83 +63,53 @@ model AuthSession {
   @@map("auth_sessions")
 }
 
-// ============================================================================
-// PROJECT & DOCUMENTS
-// ============================================================================
-
 model Project {
-  id String @id @default(uuid()) @db.Uuid
-
-  name     String @db.VarChar(255)
-  statusId String @db.Uuid
-
-  // Hierarchy: category is always required; subcategory and type are optional
-  // depending on the depth of the selected MasterData branch.
-  categoryId    String  @db.Uuid
-  subcategoryId String? @db.Uuid
-  typeId        String? @db.Uuid
-
-  startDate DateTime @db.Date
-  endDate   DateTime @db.Date
-  location  String   @db.VarChar(255)
-
-  // Basic Details
-  partName             String?       @db.VarChar(255)
-  modelName            String?       @db.VarChar(255)
-  projectPIC           String?       @db.VarChar(255)
-  projectScope         ProjectScope?
-  applicableCompliance String?       @db.VarChar(500)
-
-  sampleSubmissionDate DateTime? @db.Date
-  massProductionDate   DateTime? @db.Date
-
-  partSampleCount    Int?
-  productSampleCount Int?
-
-  projectPriorityScale String? @db.VarChar(50)
-
-  // Technical Details
-  operatingVoltageRange String? @db.VarChar(100)
-  ambientOperatingRange String? @db.VarChar(100)
-
-  iduHardwareVersion String? @db.VarChar(100)
-  oduHardwareVersion String? @db.VarChar(100)
-
-  iduFirmwareVersion String? @db.VarChar(100)
-  oduFirmwareVersion String? @db.VarChar(100)
-
-  partNumberAndMake           String? @db.Text
-  technicalDataSheetReference String? @db.Text
-
-  maximumPipingLength            String? @db.VarChar(100)
-  maximumCommunicationWireLength String? @db.VarChar(100)
-
-  oduFanMotorDetails String? @db.Text
-  iduFanMotorDetails String? @db.Text
-
-  compressorDetails String? @db.Text
-
-  refrigerantName     String? @db.VarChar(100)
-  refrigerantQuantity String? @db.VarChar(50)
-
-  // Status Remark
-  statusRemark String? @db.VarChar(1000)
-
-  createdBy String   @db.Uuid
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  creator       User                   @relation(fields: [createdBy], references: [id], onDelete: Restrict)
-  category      MasterData             @relation("ProjectCategory", fields: [categoryId], references: [id], onDelete: Restrict)
-  subcategory   MasterData?            @relation("ProjectSubcategory", fields: [subcategoryId], references: [id], onDelete: Restrict)
-  type          MasterData?            @relation("ProjectType", fields: [typeId], references: [id], onDelete: Restrict)
-  status        StatusMaster           @relation(fields: [statusId], references: [id], onDelete: Restrict)
-  documents     ProjectDocument[]
-  statusHistory ProjectStatusHistory[]
-
-  // New report relations
-  partReports   PartReport[]
-  summaryReport SummaryReport?
+  id                             String                 @id @default(uuid()) @db.Uuid
+  name                           String                 @db.VarChar(255)
+  startDate                      DateTime               @db.Date
+  endDate                        DateTime               @db.Date
+  location                       String                 @db.VarChar(255)
+  partName                       String?                @db.VarChar(255)
+  modelName                      String?                @db.VarChar(255)
+  projectPIC                     String?                @db.VarChar(255)
+  projectScope                   ProjectScope?
+  applicableCompliance           String?                @db.VarChar(500)
+  sampleSubmissionDate           DateTime?              @db.Date
+  massProductionDate             DateTime?              @db.Date
+  partSampleCount                Int?
+  productSampleCount             Int?
+  projectPriorityScale           String?                @db.VarChar(50)
+  operatingVoltageRange          String?                @db.VarChar(100)
+  ambientOperatingRange          String?                @db.VarChar(100)
+  iduHardwareVersion             String?                @db.VarChar(100)
+  oduHardwareVersion             String?                @db.VarChar(100)
+  iduFirmwareVersion             String?                @db.VarChar(100)
+  oduFirmwareVersion             String?                @db.VarChar(100)
+  partNumberAndMake              String?
+  technicalDataSheetReference    String?
+  maximumPipingLength            String?                @db.VarChar(100)
+  maximumCommunicationWireLength String?                @db.VarChar(100)
+  oduFanMotorDetails             String?
+  iduFanMotorDetails             String?
+  compressorDetails              String?
+  refrigerantName                String?                @db.VarChar(100)
+  refrigerantQuantity            String?                @db.VarChar(50)
+  createdBy                      String                 @db.Uuid
+  createdAt                      DateTime               @default(now())
+  updatedAt                      DateTime               @updatedAt
+  categoryId                     String                 @db.Uuid
+  statusId                       String                 @db.Uuid
+  statusRemark                   String?                @db.VarChar(1000)
+  subcategoryId                  String                 @db.Uuid
+  typeId                         String                 @db.Uuid
+  documents                      ProjectDocument[]
+  statusHistory                  ProjectStatusHistory[]
+  category                       categories             @relation("ProjectCategory", fields: [categoryId], references: [id])
+  creator                        User                   @relation(fields: [createdBy], references: [id])
+  status                         StatusMaster           @relation(fields: [statusId], references: [id])
+  subcategory                    subcategories          @relation("ProjectSubcategory", fields: [subcategoryId], references: [id])
+  type                           types                  @relation("ProjectType", fields: [typeId], references: [id])
+  reports                        reports[]
 
   @@index([categoryId])
   @@index([subcategoryId])
@@ -248,15 +126,14 @@ model ProjectDocument {
   id           String   @id @default(uuid()) @db.Uuid
   projectId    String   @db.Uuid
   fileName     String   @db.VarChar(255)
-  originalName String   @db.VarChar(255)
   fileUrl      String   @db.VarChar(500)
   fileSize     Int?
   mimeType     String?  @db.VarChar(100)
   uploadedBy   String   @db.Uuid
   uploadedAt   DateTime @default(now())
-
-  project  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  uploader User    @relation(fields: [uploadedBy], references: [id], onDelete: Restrict)
+  originalName String   @db.VarChar(255)
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploader     User     @relation(fields: [uploadedBy], references: [id])
 
   @@index([projectId])
   @@index([uploadedBy])
@@ -264,15 +141,14 @@ model ProjectDocument {
 }
 
 model ProjectStatusHistory {
-  id        String   @id @default(uuid()) @db.Uuid
-  projectId String   @db.Uuid
-  statusId  String   @db.Uuid
-  remark    String?  @db.VarChar(1000)
-  changedBy String   @db.Uuid
-  changedAt DateTime @default(now())
-
-  project Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  status  StatusMaster @relation(fields: [statusId], references: [id], onDelete: Restrict)
+  id        String       @id @default(uuid()) @db.Uuid
+  projectId String       @db.Uuid
+  statusId  String       @db.Uuid
+  remark    String?      @db.VarChar(1000)
+  changedBy String       @db.Uuid
+  changedAt DateTime     @default(now())
+  project   Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status    StatusMaster @relation(fields: [statusId], references: [id])
 
   @@index([projectId])
   @@index([statusId])
@@ -280,200 +156,92 @@ model ProjectStatusHistory {
   @@map("project_status_history")
 }
 
-// ============================================================================
-// PART REPORTS  (One Project → Many Part Reports)
-// ============================================================================
+model categories {
+  id                 String          @id @db.Uuid
+  name               String          @db.VarChar(100)
+  code               String          @unique @db.VarChar(50)
+  description        String?         @db.VarChar(500)
+  isActive           Boolean         @default(true)
+  createdAt          DateTime        @default(now())
+  updatedAt          DateTime
+  projectsAsCategory Project[]       @relation("ProjectCategory")
+  subcategories      subcategories[]
 
-model PartReport {
-  id             String       @id @default(uuid()) @db.Uuid
-  projectId      String       @db.Uuid
-  reportName     String       @db.VarChar(255)
-  reportStatus   ReportStatus @default(PENDING)
-  createdById    String       @db.Uuid
-  preparedById   String?      @db.Uuid
-  checkedById    String?      @db.Uuid
-  checkedByName  String?      @db.VarChar(100)
-  approvedById   String?      @db.Uuid
-  approvedByName String?      @db.VarChar(100)
-  data           Json
-  formatNumber   String?      @db.VarChar(100)
-  reportNumber   String?      @db.VarChar(100)
-  isDraft        Boolean      @default(true)
-  generatedAt    DateTime?
-  lastActionBy   String?      @db.VarChar(100)
-  lastActionType String?      @db.VarChar(50)
-  lastActionAt   DateTime?
-  rejectionHistory Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  @@index([code])
+  @@index([isActive])
+}
 
-  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  creator         User       @relation("PartReportCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
-  preparedBy      User?      @relation("PartReportPreparedBy", fields: [preparedById], references: [id], onDelete: SetNull)
-  checker         User?      @relation("PartReportChecker", fields: [checkedById], references: [id], onDelete: SetNull)
-  approver        User?      @relation("PartReportApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  testPartList    TestPartList?
-  approvalHistory PartReportApprovalHistory[]
+model reports {
+  id           String     @id @db.Uuid
+  title        String     @db.VarChar(255)
+  format       String     @db.VarChar(50)
+  formatNumber String?    @db.VarChar(100)
+  reportNumber String?    @db.VarChar(100)
+  data         Json
+  createdBy    String     @db.Uuid
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime
+  projectId    String     @db.Uuid
+  type         ReportType
+  users        User       @relation(fields: [createdBy], references: [id])
+  projects     Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
-  @@index([projectId])
-  @@index([createdById])
-  @@index([reportStatus])
+  @@unique([projectId, type])
   @@index([createdAt])
-  @@map("part_reports")
-}
-
-model TestPartList {
-  id             String       @id @default(uuid()) @db.Uuid
-  partReportId   String       @unique @db.Uuid
-  status         ReportStatus @default(PENDING)
-  checkedById    String?      @db.Uuid
-  checkedByName  String?      @db.VarChar(100)
-  approvedById   String?      @db.Uuid
-  approvedByName String?      @db.VarChar(100)
-  formData       Json
-  isDraft        Boolean      @default(true)
-  generatedAt    DateTime?
-  lastActionBy   String?      @db.VarChar(100)
-  lastActionType String?      @db.VarChar(50)
-  lastActionAt   DateTime?
-  rejectionHistory Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  partReport      PartReport @relation(fields: [partReportId], references: [id], onDelete: Cascade)
-  checker         User?      @relation("TestPartListChecker", fields: [checkedById], references: [id], onDelete: SetNull)
-  approver        User?      @relation("TestPartListApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvalHistory TestPartListApprovalHistory[]
-
-  @@index([partReportId])
-  @@map("test_part_lists")
-}
-
-model PartReportApprovalHistory {
-  id           String   @id @default(uuid()) @db.Uuid
-  partReportId String   @db.Uuid
-  userId       String   @db.Uuid
-  action       String   @db.VarChar(50)
-  status       String   @db.VarChar(50)
-  createdAt    DateTime @default(now())
-
-  partReport PartReport @relation(fields: [partReportId], references: [id], onDelete: Cascade)
-  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([partReportId])
-  @@index([userId])
-  @@map("part_report_approval_history")
-}
-
-model TestPartListApprovalHistory {
-  id             String   @id @default(uuid()) @db.Uuid
-  testPartListId String   @db.Uuid
-  userId         String   @db.Uuid
-  action         String   @db.VarChar(50)
-  status         String   @db.VarChar(50)
-  createdAt      DateTime @default(now())
-
-  testPartList TestPartList @relation(fields: [testPartListId], references: [id], onDelete: Cascade)
-  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([testPartListId])
-  @@index([userId])
-  @@map("test_part_list_approval_history")
-}
-
-// ============================================================================
-// SUMMARY REPORT  (One Project → One Summary Report)
-// ============================================================================
-
-model SummaryReport {
-  id             String       @id @default(uuid()) @db.Uuid
-  projectId      String       @unique @db.Uuid
-  reportStatus   ReportStatus @default(PENDING)
-  preparedById   String?      @db.Uuid
-  checkedById    String?      @db.Uuid
-  checkedByName  String?      @db.VarChar(100)
-  approvedById   String?      @db.Uuid
-  approvedByName String?      @db.VarChar(100)
-  data           Json
-  formatNumber   String?      @db.VarChar(100)
-  reportNumber   String?      @db.VarChar(100)
-  isDraft        Boolean      @default(true)
-  generatedAt    DateTime?
-  lastActionBy   String?      @db.VarChar(100)
-  lastActionType String?      @db.VarChar(50)
-  lastActionAt   DateTime?
-  rejectionHistory Json?
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
-
-  project         Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  preparedBy      User?      @relation("SummaryReportPreparedBy", fields: [preparedById], references: [id], onDelete: SetNull)
-  checker         User?      @relation("SummaryReportChecker", fields: [checkedById], references: [id], onDelete: SetNull)
-  approver        User?      @relation("SummaryReportApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  testSummaryList TestSummaryList?
-  approvalHistory SummaryReportApprovalHistory[]
-
+  @@index([createdBy])
   @@index([projectId])
-  @@index([reportStatus])
-  @@index([createdAt])
-  @@map("summary_reports")
+  @@index([title])
 }
 
-model TestSummaryList {
-  id              String       @id @default(uuid()) @db.Uuid
-  summaryReportId String       @unique @db.Uuid
-  status          ReportStatus @default(PENDING)
-  checkedById     String?      @db.Uuid
-  checkedByName   String?      @db.VarChar(100)
-  approvedById    String?      @db.Uuid
-  approvedByName  String?      @db.VarChar(100)
-  formData        Json
-  isDraft         Boolean      @default(true)
-  generatedAt     DateTime?
-  lastActionBy    String?      @db.VarChar(100)
-  lastActionType  String?      @db.VarChar(50)
-  lastActionAt    DateTime?
-  rejectionHistory Json?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
+model subcategories {
+  id                    String     @id @db.Uuid
+  categoryId            String     @db.Uuid
+  name                  String     @db.VarChar(100)
+  code                  String     @unique @db.VarChar(50)
+  description           String?    @db.VarChar(500)
+  isActive              Boolean    @default(true)
+  createdAt             DateTime   @default(now())
+  updatedAt             DateTime
+  projectsAsSubcategory Project[]  @relation("ProjectSubcategory")
+  categories            categories @relation(fields: [categoryId], references: [id])
+  types                 types[]
 
-  summaryReport   SummaryReport @relation(fields: [summaryReportId], references: [id], onDelete: Cascade)
-  checker         User?         @relation("TestSummaryListChecker", fields: [checkedById], references: [id], onDelete: SetNull)
-  approver        User?         @relation("TestSummaryListApprover", fields: [approvedById], references: [id], onDelete: SetNull)
-  approvalHistory TestSummaryListApprovalHistory[]
-
-  @@index([summaryReportId])
-  @@map("test_summary_lists")
+  @@index([categoryId])
+  @@index([code])
+  @@index([isActive])
 }
 
-model SummaryReportApprovalHistory {
-  id              String   @id @default(uuid()) @db.Uuid
-  summaryReportId String   @db.Uuid
-  userId          String   @db.Uuid
-  action          String   @db.VarChar(50)
-  status          String   @db.VarChar(50)
-  createdAt       DateTime @default(now())
+model types {
+  id             String        @id @db.Uuid
+  subcategoryId  String        @db.Uuid
+  name           String        @db.VarChar(100)
+  code           String        @db.VarChar(50)
+  description    String?       @db.VarChar(500)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime
+  projectsAsType Project[]     @relation("ProjectType")
+  subcategories  subcategories @relation(fields: [subcategoryId], references: [id], onDelete: Cascade)
 
-  summaryReport SummaryReport @relation(fields: [summaryReportId], references: [id], onDelete: Cascade)
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-
-  @@index([summaryReportId])
-  @@index([userId])
-  @@map("summary_report_approval_history")
+  @@unique([subcategoryId, code])
+  @@index([code])
+  @@index([isActive])
+  @@index([subcategoryId])
 }
 
-model TestSummaryListApprovalHistory {
-  id                String   @id @default(uuid()) @db.Uuid
-  testSummaryListId String   @db.Uuid
-  userId            String   @db.Uuid
-  action            String   @db.VarChar(50)
-  status            String   @db.VarChar(50)
-  createdAt         DateTime @default(now())
+enum UserRole {
+  EMPLOYEE
+  TEAM_LEAD
+  MANAGER
+}
 
-  testSummaryList TestSummaryList @relation(fields: [testSummaryListId], references: [id], onDelete: Cascade)
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+enum ProjectScope {
+  DOMESTIC
+  OVERSEAS
+}
 
-  @@index([testSummaryListId])
-  @@index([userId])
-  @@map("test_summary_list_approval_history")
+enum ReportType {
+  PART_REPORT
+  SUMMARY_REPORT
+  TEST_LIST
 }
