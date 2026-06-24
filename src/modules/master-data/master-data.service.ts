@@ -2,266 +2,271 @@ import { NotFoundError } from '../../shared/utils/errors/not-found-error';
 import { BadRequestError } from '../../shared/utils/errors/bad-request-error';
 import { masterDataRepository } from './master-data.repository';
 import type {
-  PublicCategory,
-  PublicSubcategory,
-  PublicType,
-  PublicStatusMaster,
-  CreateCategoryBody,
-  UpdateCategoryBody,
-  CreateSubcategoryBody,
-  UpdateSubcategoryBody,
-  CreateTypeBody,
-  UpdateTypeBody,
-  CreateStatusBody,
-  UpdateStatusBody,
+  PublicMasterData,
+  MasterDataTree,
+  CreateMasterDataBody,
+  UpdateMasterDataBody,
+  ListMasterDataQuery,
 } from './master-data.types';
+import type { MasterDataLevel } from '@prisma/client';
 
-function toPublicCategory(c: { id: string; name: string; code: string; description: string | null; isActive: boolean; createdAt: Date; updatedAt: Date; subcategories?: unknown[] }): PublicCategory {
+// ============================================================================
+// Mapping helpers
+// ============================================================================
+
+type RawNode = {
+  id: string;
+  name: string;
+  level: MasterDataLevel;
+  parentId: string | null;
+  isActive: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  children?: RawNode[];
+  _count?: {
+    projectsAsCategory: number;
+    projectsAsSubcategory: number;
+    projectsAsType: number;
+  };
+};
+
+function toPublic(node: RawNode): PublicMasterData {
+  let projectCount = 0;
+  if (node._count) {
+    projectCount = node._count.projectsAsCategory + node._count.projectsAsSubcategory + node._count.projectsAsType;
+  }
   return {
-    id: c.id,
-    name: c.name,
-    code: c.code,
-    description: c.description,
-    isActive: c.isActive,
-    createdAt: c.createdAt.toISOString(),
-    updatedAt: c.updatedAt.toISOString(),
-    subcategories: c.subcategories as PublicSubcategory[] | undefined,
+    id: node.id,
+    name: node.name,
+    level: node.level,
+    parentId: node.parentId,
+    isActive: node.isActive,
+    createdAt: node.createdAt.toISOString(),
+    updatedAt: node.updatedAt.toISOString(),
+    children: node.children ? node.children.map(toPublic) : undefined,
+    projectCount,
   };
 }
 
-function toPublicSubcategory(s: { id: string; categoryId: string; name: string; code: string; description: string | null; isActive: boolean; createdAt: Date; updatedAt: Date; category?: unknown; types?: unknown[] }): PublicSubcategory {
-  return {
-    id: s.id,
-    categoryId: s.categoryId,
-    name: s.name,
-    code: s.code,
-    description: s.description,
-    isActive: s.isActive,
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-    types: s.types as PublicType[] | undefined,
-  };
+function toTree(categories: RawNode[]): MasterDataTree[] {
+  return categories.map((cat) => ({
+    id: cat.id,
+    name: cat.name,
+    level: 'CATEGORY' as const,
+    isActive: cat.isActive,
+    children: (cat.children ?? []).map((sub) => ({
+      id: sub.id,
+      name: sub.name,
+      level: 'SUBCATEGORY' as const,
+      parentId: sub.parentId!,
+      isActive: sub.isActive,
+      children: (sub.children ?? []).map((type) => ({
+        id: type.id,
+        name: type.name,
+        level: 'TYPE' as const,
+        parentId: type.parentId!,
+        isActive: type.isActive,
+      })),
+    })),
+  }));
 }
 
-function toPublicType(t: { id: string; subcategoryId: string; name: string; code: string; description: string | null; isActive: boolean; createdAt: Date; updatedAt: Date; subcategory?: unknown }): PublicType {
-  return {
-    id: t.id,
-    subcategoryId: t.subcategoryId,
-    name: t.name,
-    code: t.code,
-    description: t.description,
-    isActive: t.isActive,
-    createdAt: t.createdAt.toISOString(),
-    updatedAt: t.updatedAt.toISOString(),
-    subcategory: t.subcategory as PublicType['subcategory'],
-  };
+// ============================================================================
+// Level validation rules
+// ============================================================================
+
+const LEVEL_ORDER: MasterDataLevel[] = ['CATEGORY', 'SUBCATEGORY', 'TYPE'];
+
+function expectedParentLevel(level: MasterDataLevel): MasterDataLevel | null {
+  const idx = LEVEL_ORDER.indexOf(level);
+  return idx > 0 ? LEVEL_ORDER[idx - 1] : null;
 }
 
-function toPublicStatus(s: { id: string; code: string; displayName: string; color: string; isActive: boolean; isSystem: boolean; createdAt: Date; updatedAt: Date }): PublicStatusMaster {
-  return {
-    id: s.id,
-    code: s.code,
-    displayName: s.displayName,
-    color: s.color,
-    isActive: s.isActive,
-    isSystem: s.isSystem,
-    createdAt: s.createdAt.toISOString(),
-    updatedAt: s.updatedAt.toISOString(),
-  };
-}
+// ============================================================================
+// Service
+// ============================================================================
 
 export class MasterDataService {
-  async listCategories(query: { page: number; limit: number; search?: string; isActive?: boolean }) {
-    return masterDataRepository.findAllCategories(query);
+  // --------------------------------------------------------------------------
+  // MasterData CRUD
+  // --------------------------------------------------------------------------
+
+  async list(query: ListMasterDataQuery) {
+    const result = await masterDataRepository.findAll(query);
+    return {
+      ...result,
+      rows: result.rows.map((row) => toPublic(row as RawNode)),
+    };
   }
 
-  async getCategoryById(id: string): Promise<PublicCategory> {
-    const category = await masterDataRepository.findCategoryById(id);
-    if (!category) throw new NotFoundError('Category');
-    return toPublicCategory(category);
+  async getById(id: string): Promise<PublicMasterData> {
+    const node = await masterDataRepository.findById(id);
+    if (!node) throw new NotFoundError('MasterData node');
+    return toPublic(node as RawNode);
   }
 
-  async createCategory(data: CreateCategoryBody): Promise<PublicCategory> {
-    const existing = await masterDataRepository.findCategoryByCode(data.code);
-    if (existing) {
-      throw new BadRequestError('Category with this code already exists');
-    }
-    const category = await masterDataRepository.createCategory(data);
-    return toPublicCategory(category);
+  async getCategories(isActive?: boolean): Promise<PublicMasterData[]> {
+    const cats = await masterDataRepository.findCategories(isActive);
+    return cats.map((c) => toPublic(c as RawNode));
   }
 
-  async updateCategory(id: string, data: UpdateCategoryBody): Promise<PublicCategory> {
-    const existing = await masterDataRepository.findCategoryById(id);
-    if (!existing) throw new NotFoundError('Category');
-
-    const category = await masterDataRepository.updateCategory(id, data);
-    return toPublicCategory(category);
+  async getChildren(parentId: string, isActive?: boolean): Promise<PublicMasterData[]> {
+    const parent = await masterDataRepository.findByIdSimple(parentId);
+    if (!parent) throw new NotFoundError('Parent node');
+    const children = await masterDataRepository.findChildren(parentId, isActive);
+    return children.map((c) => toPublic(c as RawNode));
   }
 
-  async toggleCategoryStatus(id: string, isActive: boolean): Promise<PublicCategory> {
-    const existing = await masterDataRepository.findCategoryById(id);
-    if (!existing) throw new NotFoundError('Category');
+  async getTree(isActive?: boolean): Promise<MasterDataTree[]> {
+    const categories = await masterDataRepository.getFullTree(isActive);
+    return toTree(categories as RawNode[]);
+  }
 
-    if (!isActive) {
-      // Cascade: inactivate category, all its subcategories, and all their types
-      await masterDataRepository.cascadeInactivateCategory(id);
+  async create(data: CreateMasterDataBody): Promise<PublicMasterData> {
+    // Validate parentId rules
+    const requiredParentLevel = expectedParentLevel(data.level);
+
+    if (requiredParentLevel === null) {
+      // CATEGORY — must not have a parent
+      if (data.parentId) {
+        throw new BadRequestError('Categories must not have a parent.');
+      }
     } else {
-      // Simple activate — children keep their current status
-      await masterDataRepository.updateCategory(id, { isActive: true });
+      // SUBCATEGORY or TYPE — must have a valid parent of the correct level
+      if (!data.parentId) {
+        throw new BadRequestError(
+          `A ${data.level} must have a parent ${requiredParentLevel}.`,
+        );
+      }
+      const parent = await masterDataRepository.findByIdSimple(data.parentId);
+      if (!parent) throw new NotFoundError('Parent node');
+      if (parent.level !== requiredParentLevel) {
+        throw new BadRequestError(
+          `A ${data.level} must have a parent of level ${requiredParentLevel}, but the provided parent has level ${parent.level}.`,
+        );
+      }
     }
 
-    const updated = await masterDataRepository.findCategoryById(id);
-    return toPublicCategory(updated!);
-  }
-
-  async listSubcategories(query: { page: number; limit: number; categoryId?: string; search?: string; isActive?: boolean }) {
-    return masterDataRepository.findAllSubcategories(query);
-  }
-
-  async getSubcategoryById(id: string): Promise<PublicSubcategory> {
-    const subcategory = await masterDataRepository.findSubcategoryById(id);
-    if (!subcategory) throw new NotFoundError('Subcategory');
-    return toPublicSubcategory(subcategory);
-  }
-
-  async getSubcategoriesByCategoryId(categoryId: string, isActive?: boolean): Promise<PublicSubcategory[]> {
-    const subcategories = await masterDataRepository.findSubcategoriesByCategoryId(categoryId, isActive);
-    return subcategories.map(toPublicSubcategory);
-  }
-
-  async createSubcategory(data: CreateSubcategoryBody): Promise<PublicSubcategory> {
-    const existing = await masterDataRepository.findSubcategoryByCode(data.code);
-    if (existing) {
-      throw new BadRequestError('Subcategory with this code already exists');
+    // Check for duplicate name under same parent
+    const duplicate = await masterDataRepository.findByNameAndParent(
+      data.name,
+      data.parentId ?? null,
+      data.level,
+    );
+    if (duplicate) {
+      throw new BadRequestError(
+        `A ${data.level} with name "${data.name}" already exists under this parent.`,
+      );
     }
 
-    const category = await masterDataRepository.findCategoryById(data.categoryId);
-    if (!category) throw new NotFoundError('Category');
-
-    const subcategory = await masterDataRepository.createSubcategory(data);
-    return toPublicSubcategory(subcategory);
+    const node = await masterDataRepository.create(data);
+    return toPublic(node as RawNode);
   }
 
-  async updateSubcategory(id: string, data: UpdateSubcategoryBody): Promise<PublicSubcategory> {
-    const existing = await masterDataRepository.findSubcategoryById(id);
-    if (!existing) throw new NotFoundError('Subcategory');
+  async update(id: string, data: UpdateMasterDataBody): Promise<PublicMasterData> {
+    const existing = await masterDataRepository.findByIdSimple(id);
+    if (!existing) throw new NotFoundError('MasterData node');
 
-    if (data.categoryId) {
-      const category = await masterDataRepository.findCategoryById(data.categoryId);
-      if (!category) throw new NotFoundError('Category');
+    // Check for duplicate name under same parent
+    const duplicate = await masterDataRepository.findByNameAndParent(
+      data.name,
+      existing.parentId,
+      existing.level,
+    );
+    if (duplicate && duplicate.id !== id) {
+      throw new BadRequestError(
+        `A ${existing.level} with name "${data.name}" already exists under this parent.`,
+      );
     }
 
-    const subcategory = await masterDataRepository.updateSubcategory(id, data);
-    return toPublicSubcategory(subcategory);
+    const node = await masterDataRepository.update(id, data);
+    return toPublic(node as RawNode);
   }
 
-  async toggleSubcategoryStatus(id: string, isActive: boolean): Promise<PublicSubcategory> {
-    const existing = await masterDataRepository.findSubcategoryById(id);
-    if (!existing) throw new NotFoundError('Subcategory');
+  async deactivate(id: string): Promise<PublicMasterData> {
+    const existing = await masterDataRepository.findByIdSimple(id);
+    if (!existing) throw new NotFoundError('MasterData node');
 
-    if (!isActive) {
-      // Cascade: inactivate subcategory and all its types
-      await masterDataRepository.cascadeInactivateSubcategory(id);
+    await masterDataRepository.cascadeDeactivate(id);
+
+    const updated = await masterDataRepository.findByIdSimple(id);
+    return toPublic(updated as RawNode);
+  }
+
+  async activate(id: string): Promise<PublicMasterData> {
+    const existing = await masterDataRepository.findByIdSimple(id);
+    if (!existing) throw new NotFoundError('MasterData node');
+
+    const updated = await masterDataRepository.activate(id);
+    return toPublic(updated as RawNode);
+  }
+
+  async toggleStatus(id: string, isActive: boolean) {
+    const node = await masterDataRepository.findById(id);
+    if (!node) throw new NotFoundError('Node not found');
+
+    if (isActive) {
+      return toPublic(await masterDataRepository.activate(id));
     } else {
-      // Simple activate — types keep their current status
-      await masterDataRepository.updateSubcategory(id, { isActive: true });
+      await masterDataRepository.cascadeDeactivate(id);
+      return toPublic(await masterDataRepository.findById(id) as any);
+    }
+  }
+
+  async deleteNode(id: string) {
+    const node = await masterDataRepository.findById(id);
+    if (!node) throw new NotFoundError('Node not found');
+
+    if (node.children && node.children.length > 0) {
+      throw new BadRequestError('Cannot delete node because it has children. Please delete all children first.');
     }
 
-    const updated = await masterDataRepository.findSubcategoryById(id);
-    return toPublicSubcategory(updated!);
-  }
+    const projectCount = (node._count?.projectsAsCategory || 0) + 
+                         (node._count?.projectsAsSubcategory || 0) + 
+                         (node._count?.projectsAsType || 0);
 
-  async listTypes(query: { page: number; limit: number; search?: string; isActive?: boolean; categoryId?: string; subcategoryId?: string }) {
-    return masterDataRepository.findAllTypes(query);
-  }
-
-  async getAllActiveTypes(): Promise<PublicType[]> {
-    const types = await masterDataRepository.findAllActiveTypes();
-    return types.map(toPublicType);
-  }
-
-  async getTypeById(id: string): Promise<PublicType> {
-    const type = await masterDataRepository.findTypeById(id);
-    if (!type) throw new NotFoundError('Type');
-    return toPublicType(type);
-  }
-
-  async getTypesBySubcategoryId(subcategoryId: string): Promise<PublicType[]> {
-    const types = await masterDataRepository.findTypesBySubcategoryId(subcategoryId);
-    return types.map(toPublicType);
-  }
-
-  async createType(data: CreateTypeBody): Promise<PublicType> {
-    const existing = await masterDataRepository.findTypeByCodeAndSubcategory(data.code, data.subcategoryId);
-    if (existing) {
-      throw new BadRequestError('Type with this code already exists in the selected subcategory');
+    if (projectCount > 0) {
+      throw new BadRequestError(`Cannot delete node because it is used in ${projectCount} project(s).`);
     }
 
-    const type = await masterDataRepository.createType(data);
-    return toPublicType(type);
+    await masterDataRepository.delete(id);
   }
 
-  async updateType(id: string, data: UpdateTypeBody): Promise<PublicType> {
-    const existing = await masterDataRepository.findTypeById(id);
-    if (!existing) throw new NotFoundError('Type');
-
-    const type = await masterDataRepository.updateType(id, data);
-    return toPublicType(type);
-  }
-
-  async toggleTypeStatus(id: string, isActive: boolean): Promise<PublicType> {
-    const existing = await masterDataRepository.findTypeById(id);
-    if (!existing) throw new NotFoundError('Type');
-
-    const type = await masterDataRepository.updateType(id, { isActive });
-    return toPublicType(type);
-  }
-
-
+  // --------------------------------------------------------------------------
+  // StatusMaster (unchanged interface)
+  // --------------------------------------------------------------------------
 
   async listStatuses(query: { page: number; limit: number; search?: string; isActive?: boolean }) {
     return masterDataRepository.findAllStatuses(query);
   }
 
-  async getStatusById(id: string): Promise<PublicStatusMaster> {
+  async getStatusById(id: string) {
     const status = await masterDataRepository.findStatusById(id);
     if (!status) throw new NotFoundError('Status');
-    return toPublicStatus(status);
+    return status;
   }
 
-  async getAllActiveStatuses(): Promise<PublicStatusMaster[]> {
-    const statuses = await masterDataRepository.findAllActiveStatuses();
-    return statuses.map(toPublicStatus);
+  async getAllActiveStatuses() {
+    return masterDataRepository.findAllActiveStatuses();
   }
 
-  async createStatus(data: CreateStatusBody): Promise<PublicStatusMaster> {
+  async createStatus(data: { code: string; displayName: string; color?: string }) {
     const existing = await masterDataRepository.findStatusByCode(data.code);
-    if (existing) {
-      throw new BadRequestError('Status with this code already exists');
-    }
-
-    const status = await masterDataRepository.createStatus(data);
-    return toPublicStatus(status);
+    if (existing) throw new BadRequestError('Status with this code already exists');
+    return masterDataRepository.createStatus(data);
   }
 
-  async updateStatus(id: string, data: UpdateStatusBody): Promise<PublicStatusMaster> {
+  async updateStatus(id: string, data: { displayName?: string; color?: string; isActive?: boolean }) {
     const existing = await masterDataRepository.findStatusById(id);
     if (!existing) throw new NotFoundError('Status');
-
-    const status = await masterDataRepository.updateStatus(id, data);
-    return toPublicStatus(status);
+    return masterDataRepository.updateStatus(id, data);
   }
 
-  async toggleStatusActive(id: string, isActive: boolean): Promise<PublicStatusMaster> {
+  async toggleStatusActive(id: string, isActive: boolean) {
     const existing = await masterDataRepository.findStatusById(id);
     if (!existing) throw new NotFoundError('Status');
-
-    if (existing.isSystem) {
-      throw new BadRequestError('Cannot deactivate system status');
-    }
-
-    const status = await masterDataRepository.updateStatus(id, { isActive });
-    return toPublicStatus(status);
+    if (existing.isSystem) throw new BadRequestError('Cannot deactivate a system status');
+    return masterDataRepository.updateStatus(id, { isActive });
   }
 }
 

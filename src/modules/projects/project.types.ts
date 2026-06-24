@@ -35,8 +35,8 @@ export interface ListProjectsQuery {
 export interface CreateProjectBody {
   name: string;
   categoryId: string;
-  subcategoryId: string;
-  typeId: string;
+  subcategoryId?: string;
+  typeId?: string;
   statusId: string;
   startDate: string;
   endDate: string;
@@ -72,8 +72,8 @@ export interface CreateProjectBody {
 export interface UpdateProjectBody {
   name?: string;
   categoryId?: string;
-  subcategoryId?: string;
-  typeId?: string;
+  subcategoryId?: string | null;
+  typeId?: string | null;
   statusId?: string;
   startDate?: string;
   endDate?: string;
@@ -131,8 +131,8 @@ export interface PublicProject {
   id: string;
   name: string;
   categoryId: string;
-  subcategoryId: string;
-  typeId: string;
+  subcategoryId: string | null;
+  typeId: string | null;
   statusId: string;
   startDate: string;
   endDate: string;
@@ -174,18 +174,15 @@ export interface PublicProject {
   category?: {
     id: string;
     name: string;
-    code: string;
   };
   subcategory?: {
     id: string;
     name: string;
-    code: string;
-  };
+  } | null;
   type?: {
     id: string;
     name: string;
-    code: string;
-  };
+  } | null;
   status?: {
     id: string;
     code: string;
@@ -193,10 +190,17 @@ export interface PublicProject {
     color: string;
   };
   documents?: PublicProjectDocument[];
-  reports?: {
+  partReports?: {
     id: string;
-    type: 'PART_REPORT' | 'SUMMARY_REPORT' | 'TEST_LIST';
-    status: ReportStatus;
+    reportName: string;
+    reportStatus: ReportStatus;
     updatedAt: string;
+    testPartList?: { id: string; status: ReportStatus } | null;
   }[];
+  summaryReport?: {
+    id: string;
+    reportStatus: ReportStatus;
+    updatedAt: string;
+    testSummaryList?: { id: string; status: ReportStatus } | null;
+  } | null;
 }

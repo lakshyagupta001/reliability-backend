@@ -120,120 +120,100 @@ function randomDate(start: Date, end: Date): Date {
   return new Date(start.getTime() + Math.random() * (end.getTime() - start.getTime()));
 }
 
+async function upsertMasterData(
+  name: string,
+  level: 'CATEGORY' | 'SUBCATEGORY' | 'TYPE',
+  parentId?: string,
+) {
+  const existing = await prisma.masterData.findFirst({
+    where: {
+      name: { equals: name, mode: 'insensitive' },
+      level,
+      parentId: parentId ?? null,
+    },
+  });
+
+  if (existing) {
+    return prisma.masterData.update({
+      where: { id: existing.id },
+      data: { isActive: true },
+    });
+  }
+
+  return prisma.masterData.create({
+    data: { name, level, parentId: parentId ?? null, isActive: true },
+  });
+}
+
 async function main() {
   const passwordHash = await bcrypt.hash(DEFAULT_PASSWORD, 10);
 
+  // ============================================================================
+  // 1. Seed Users
+  // ============================================================================
   const users = [
-    {
-      email: 'lakshyagupta@bluestarindia.com',
-      firstName: 'Lakshya',
-      lastName: 'Gupta',
-      role: UserRole.EMPLOYEE
-    },
-    {
-      email: 'yashojha@bluestarindia.com',
-      firstName: 'Yash',
-      lastName: 'Ojha',
-      role: UserRole.EMPLOYEE
-    },
-    {
-      email: 'rishabhtiwari@bluestarindia.com',
-      firstName: 'Rishabh',
-      lastName: 'Tiwari',
-      role: UserRole.TEAM_LEAD
-    },
-    {
-      email: 'viveksingh@bluestarindia.com',
-      firstName: 'Vivek',
-      lastName: 'Singh',
-      role: UserRole.TEAM_LEAD
-    },
-    {
-      email: 'ameysamant@bluestarindia.com',
-      firstName: 'Amey',
-      lastName: 'Samant',
-      role: UserRole.MANAGER
-    },
-    {
-      email: 'varunbhatt@bluestarindia.com',
-      firstName: 'Varun',
-      lastName: 'Bhatt',
-      role: UserRole.MANAGER
-    }
+    { email: 'lakshyagupta@bluestarindia.com', firstName: 'Lakshya', lastName: 'Gupta', role: UserRole.EMPLOYEE },
+    { email: 'yashojha@bluestarindia.com', firstName: 'Yash', lastName: 'Ojha', role: UserRole.EMPLOYEE },
+    { email: 'rishabhtiwari@bluestarindia.com', firstName: 'Rishabh', lastName: 'Tiwari', role: UserRole.TEAM_LEAD },
+    { email: 'viveksingh@bluestarindia.com', firstName: 'Vivek', lastName: 'Singh', role: UserRole.TEAM_LEAD },
+    { email: 'ameysamant@bluestarindia.com', firstName: 'Amey', lastName: 'Samant', role: UserRole.MANAGER },
+    { email: 'varunbhatt@bluestarindia.com', firstName: 'Varun', lastName: 'Bhatt', role: UserRole.MANAGER },
   ];
 
   for (const user of users) {
     await prisma.user.upsert({
       where: { email: user.email },
-      update: {
-        password: passwordHash,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        isActive: true
-      },
-      create: {
-        email: user.email,
-        password: passwordHash,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: user.role,
-        isActive: true
-      }
+      update: { password: passwordHash, firstName: user.firstName, lastName: user.lastName, role: user.role, isActive: true },
+      create: { email: user.email, password: passwordHash, firstName: user.firstName, lastName: user.lastName, role: user.role, isActive: true },
     });
   }
 
   const dbUsers = await prisma.user.findMany();
   if (dbUsers.length === 0) throw new Error('Seed users not found');
 
-  const racCategory = await prisma.category.upsert({
-    where: { code: 'RAC' },
-    update: { name: 'RAC', description: 'Room Air Conditioners' },
-    create: { name: 'RAC', code: 'RAC', description: 'Room Air Conditioners' }
-  });
+  // ============================================================================
+  // 2. Seed Master Data Hierarchy (NEW: CPAG / CAG / CRBG)
+  //
+  // NOTE: The old hierarchy (RAC, CAG with old subcategories) is replaced here.
+  // This is LOCAL DEVELOPMENT DATA ONLY. No production data is affected.
+  // ============================================================================
 
-  const cagCategory = await prisma.category.upsert({
-    where: { code: 'CAG' },
-    update: { name: 'CAG', description: 'Commercial and Industrial Air Conditioning' },
-    create: { name: 'CAG', code: 'CAG', description: 'Commercial and Industrial Air Conditioning' }
-  });
+  // CPAG → RAD → HP
+  // CPAG → RAD → SRICITY
+  const cpag = await upsertMasterData('CPAG', 'CATEGORY');
+  const rad = await upsertMasterData('RAD', 'SUBCATEGORY', cpag.id);
+  const hp = await upsertMasterData('HP', 'TYPE', rad.id);
+  const sricity = await upsertMasterData('SRICITY', 'TYPE', rad.id);
 
-  const hpSubcategory = await prisma.subcategory.upsert({
-    where: { code: 'HP' },
-    update: { categoryId: racCategory.id, name: 'HP', description: 'Heat Pump' },
-    create: { categoryId: racCategory.id, name: 'HP', code: 'HP', description: 'Heat Pump' }
-  });
+  // CAG → IBGCAG → ATW
+  // CAG → IBGCAG → DUCTED
+  // CAG → VRF         (leaf is SubCategory — no types)
+  // CAG → CHILLERS     (leaf is SubCategory — no types)
+  const cag = await upsertMasterData('CAG', 'CATEGORY');
+  const ibgcag = await upsertMasterData('IBGCAG', 'SUBCATEGORY', cag.id);
+  await upsertMasterData('ATW', 'TYPE', ibgcag.id);
+  await upsertMasterData('DUCTED', 'TYPE', ibgcag.id);
+  const vrf = await upsertMasterData('VRF', 'SUBCATEGORY', cag.id);
+  const chillers = await upsertMasterData('CHILLERS', 'SUBCATEGORY', cag.id);
 
-  const sricitySubcategory = await prisma.subcategory.upsert({
-    where: { code: 'SRICITY' },
-    update: { categoryId: racCategory.id, name: 'SRICITY', description: 'Smart Inverter Technology' },
-    create: { categoryId: racCategory.id, name: 'SRICITY', code: 'SRICITY', description: 'Smart Inverter Technology' }
-  });
+  // CRBG → CSD
+  // CRBG → WATER COOLER
+  // CRBG → DEEP FREEZER
+  const crbg = await upsertMasterData('CRBG', 'CATEGORY');
+  const csd = await upsertMasterData('CSD', 'SUBCATEGORY', crbg.id);
+  const waterCooler = await upsertMasterData('WATER COOLER', 'SUBCATEGORY', crbg.id);
+  const deepFreezer = await upsertMasterData('DEEP FREEZER', 'SUBCATEGORY', crbg.id);
 
-  const vrfSubcategory = await prisma.subcategory.upsert({
-    where: { code: 'VRF' },
-    update: { categoryId: cagCategory.id, name: 'VRF', description: 'Variable Refrigerant Flow' },
-    create: { categoryId: cagCategory.id, name: 'VRF', code: 'VRF', description: 'Variable Refrigerant Flow' }
-  });
+  console.log('Master data hierarchy seeded:');
+  console.log('  CPAG → RAD → HP, SRICITY');
+  console.log('  CAG → IBGCAG → ATW, DUCTED');
+  console.log('  CAG → VRF');
+  console.log('  CAG → CHILLERS');
+  console.log('  CRBG → CSD, WATER COOLER, DEEP FREEZER');
 
-  const ductedSubcategory = await prisma.subcategory.upsert({
-    where: { code: 'DUCTED' },
-    update: { categoryId: cagCategory.id, name: 'DUCTED', description: 'Ducted Air Systems' },
-    create: { categoryId: cagCategory.id, name: 'DUCTED', code: 'DUCTED', description: 'Ducted Air Systems' }
-  });
-
-  const ibgSubcategory = await prisma.subcategory.upsert({
-    where: { code: 'IBG' },
-    update: { categoryId: cagCategory.id, name: 'IBG', description: 'Industrial Batch Galleria' },
-    create: { categoryId: cagCategory.id, name: 'IBG', code: 'IBG', description: 'Industrial Batch Galleria' }
-  });
-
-  const chillersSubcategory = await prisma.subcategory.upsert({
-    where: { code: 'CHILLERS' },
-    update: { categoryId: cagCategory.id, name: 'CHILLERS', description: 'Chiller Systems' },
-    create: { categoryId: cagCategory.id, name: 'CHILLERS', code: 'CHILLERS', description: 'Chiller Systems' }
-  });
-
+  // ============================================================================
+  // 3. Seed Status Master
+  // ============================================================================
   const statuses = [
     { code: 'NOT_STARTED', displayName: 'Not Started', color: '#6B7280', isSystem: true },
     { code: 'ONGOING', displayName: 'Ongoing', color: '#3B82F6', isSystem: true },
@@ -247,46 +227,52 @@ async function main() {
     const s = await prisma.statusMaster.upsert({
       where: { code: status.code },
       update: { displayName: status.displayName, color: status.color, isSystem: status.isSystem },
-      create: { code: status.code, displayName: status.displayName, color: status.color, isSystem: status.isSystem }
+      create: { code: status.code, displayName: status.displayName, color: status.color, isSystem: status.isSystem },
     });
     createdStatuses[status.code] = s.id;
   }
 
-  const subcategoryMap = [
-    { sub: hpSubcategory, typeCodes: ['ODU', 'IDU'] },
-    { sub: sricitySubcategory, typeCodes: ['ODU', 'IDU', 'DRIVE'] },
-    { sub: vrfSubcategory, typeCodes: ['ODU', 'IDU', 'DRIVE', 'COMPONENT'] },
-    { sub: ductedSubcategory, typeCodes: ['ODU', 'IDU'] },
-    { sub: ibgSubcategory, typeCodes: ['ODU', 'IDU'] },
-    { sub: chillersSubcategory, typeCodes: ['ODU', 'IDU'] },
+  // ============================================================================
+  // 4. Seed 30 Projects
+  //
+  // All projects are assigned to CPAG → RAD → HP as the default hierarchy node.
+  // This is local seed/development data only — no meaningful hierarchy mapping
+  // is preserved from the old structure.
+  // ============================================================================
+
+  // Leaf node combinations available:
+  // 3-level: categoryId=CPAG, subcategoryId=RAD, typeId=HP or SRICITY
+  // 3-level: categoryId=CAG,  subcategoryId=IBGCAG, typeId=ATW or DUCTED
+  // 2-level: categoryId=CAG,  subcategoryId=VRF,    typeId=null
+  // 2-level: categoryId=CAG,  subcategoryId=CHILLERS, typeId=null
+  // 2-level: categoryId=CRBG, subcategoryId=CSD,    typeId=null
+  // 2-level: categoryId=CRBG, subcategoryId=WATER COOLER, typeId=null
+  // 2-level: categoryId=CRBG, subcategoryId=DEEP FREEZER, typeId=null
+
+  const atw = await prisma.masterData.findFirst({ where: { name: 'ATW', level: 'TYPE' } });
+  const ducted = await prisma.masterData.findFirst({ where: { name: 'DUCTED', level: 'TYPE' } });
+
+  const hierarchyOptions = [
+    { categoryId: cpag.id, subcategoryId: rad.id, typeId: hp.id, label: 'CPAG/RAD/HP' },
+    { categoryId: cpag.id, subcategoryId: rad.id, typeId: sricity.id, label: 'CPAG/RAD/SRICITY' },
+    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: atw?.id || null, label: 'CAG/IBGCAG/ATW' },
+    { categoryId: cag.id, subcategoryId: ibgcag.id, typeId: ducted?.id || null, label: 'CAG/IBGCAG/DUCTED' },
+    { categoryId: cag.id, subcategoryId: vrf.id, typeId: null, label: 'CAG/VRF' },
+    { categoryId: cag.id, subcategoryId: chillers.id, typeId: null, label: 'CAG/CHILLERS' },
+    { categoryId: crbg.id, subcategoryId: csd.id, typeId: null, label: 'CRBG/CSD' },
+    { categoryId: crbg.id, subcategoryId: waterCooler.id, typeId: null, label: 'CRBG/WATER COOLER' },
+    { categoryId: crbg.id, subcategoryId: deepFreezer.id, typeId: null, label: 'CRBG/DEEP FREEZER' },
   ];
 
-  const subcategories = [];
-  for (const item of subcategoryMap) {
-    const types = [];
-    for (const typeCode of item.typeCodes) {
-      const type = await prisma.type.upsert({
-        where: { subcategoryId_code: { subcategoryId: item.sub.id, code: typeCode } },
-        update: { name: typeCode, description: `${typeCode} for ${item.sub.code}` },
-        create: { subcategoryId: item.sub.id, name: typeCode, code: typeCode, description: `${typeCode} for ${item.sub.code}` }
-      });
-      types.push(type);
-    }
-    subcategories.push({ sub: item.sub, types });
-  }
-
   const scopes = Object.values(ProjectScope);
-
   const now = new Date();
   const twoYearsAgo = new Date(now.getFullYear() - 2, 0, 1);
-  const sixMonthsLater = new Date(now.getFullYear(), now.getMonth() + 6, 31);
 
   await prisma.project.deleteMany({});
 
   const createdProjects = [];
   for (let i = 0; i < 30; i++) {
-    const subcategoryData = randomElement(subcategories);
-    const type = randomElement(subcategoryData.types);
+    const hierarchy = randomElement(hierarchyOptions);
     const statusCode = randomElement(Object.keys(createdStatuses));
     const statusId = createdStatuses[statusCode];
     const scope = Math.random() > 0.3 ? randomElement(scopes) : null;
@@ -307,16 +293,16 @@ async function main() {
 
     const projectData = {
       name: projectNames[i % projectNames.length] + (i >= projectNames.length ? ` v${Math.floor(i / projectNames.length) + 1}` : ''),
-      categoryId: subcategoryData.sub.categoryId,
-      subcategoryId: subcategoryData.sub.id,
-      typeId: type.id,
+      categoryId: hierarchy.categoryId,
+      subcategoryId: hierarchy.subcategoryId,
+      typeId: hierarchy.typeId,
       statusId,
       statusRemark: randomElement(statusRemarks[statusCode]),
       startDate,
       endDate,
       location: randomElement(locations),
       partName: `PN-${String(1000 + i).padStart(5, '0')}-REV${randomElement(['A', 'B', 'C', 'D'])}`,
-      modelName: `BL-${subcategoryData.sub.code}-${randomInt(100, 999)}${type.code === 'ODU' ? 'O' : type.code === 'IDU' ? 'I' : type.code === 'DRIVE' ? 'D' : 'C'}`,
+      modelName: `BL-${hierarchy.label.replace(/\//g, '-')}-${randomInt(100, 999)}`,
       projectPIC: randomElement(picNames),
       projectScope: scope,
       applicableCompliance: randomElement(complianceList),
@@ -332,7 +318,7 @@ async function main() {
       iduFirmwareVersion: `FW.r${randomInt(100, 999)}.${randomInt(0, 9)}`,
       oduFirmwareVersion: `FW.r${randomInt(100, 999)}.${randomInt(0, 9)}`,
       partNumberAndMake: `MAKE-${randomElement(['BL', 'COPELAND', 'DANFOSS', 'EMERSON', 'HITACHI', 'MITSUBISHI'])}-${randomInt(10000, 99999)}`,
-      technicalDataSheetReference: `TDS-${subcategoryData.sub.code}${type.code}-${String(i + 1).padStart(4, '0')}-2024`,
+      technicalDataSheetReference: `TDS-${hierarchy.label.replace(/\//g, '-')}-${String(i + 1).padStart(4, '0')}-2024`,
       maximumPipingLength: `${randomInt(15, 75)}m`,
       maximumCommunicationWireLength: `${randomInt(100, 1000)}m`,
       oduFanMotorDetails: `${randomInt(1, 4)}x ${randomInt(25, 100)}W BLDC fan`,
@@ -352,13 +338,13 @@ async function main() {
         statusId,
         remark: 'Project created',
         changedBy: projectData.createdBy,
-      }
+      },
     });
   }
 
-  console.log(`Seed completed: ${createdProjects.length} projects created`);
+  console.log(`\nSeed completed: ${createdProjects.length} projects created`);
   for (const user of users) {
-    console.log(`${user.role}:`, user.email, '/', DEFAULT_PASSWORD);
+    console.log(`${user.role}: ${user.email} / ${DEFAULT_PASSWORD}`);
   }
 }
 

@@ -18,7 +18,12 @@ import {
   projectIdParamSchema,
 } from './project.validation';
 import { upload } from '../../shared/config/upload.config';
-import { getProjectReports } from '../reports/report.controller';
+
+// Import new nested report routers
+import { projectPartReportRouter } from '../reports/part-reports/part-report.routes';
+import { partReportTestPartListRouter } from '../reports/test-part-lists/test-part-list.routes';
+import { projectSummaryReportRouter } from '../reports/summary-reports/summary-report.routes';
+import { summaryReportTestSummaryListRouter } from '../reports/test-summary-lists/test-summary-list.routes';
 
 const router = Router();
 
@@ -27,13 +32,6 @@ router.get(
   authenticate,
   validateQuery(listProjectsQuerySchema),
   listProjects,
-);
-
-router.get(
-  '/:id/reports',
-  authenticate,
-  validateParams(projectIdParamSchema),
-  getProjectReports,
 );
 
 router.get(
@@ -82,5 +80,12 @@ router.delete(
   authorizeRoles('MANAGER', 'TEAM_LEAD'),
   removeDocument,
 );
+
+// Nested report routes
+router.use('/:projectId/part-reports', projectPartReportRouter);
+router.use('/:projectId/summary-report', projectSummaryReportRouter);
+
+// Also expose test-part-list access via part-reports (not project-level, but part-report level)
+// These are wired in app.ts via /part-reports/:id/test-part-list
 
 export default router;

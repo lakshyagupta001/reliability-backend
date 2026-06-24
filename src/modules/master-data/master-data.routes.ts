@@ -3,24 +3,26 @@ import { authenticate } from '../../shared/middlewares/auth.middleware';
 import { authorizeRoles } from '../../shared/middlewares/role.middleware';
 import { validateBody, validateParams, validateQuery } from '../../shared/middlewares/validate.middleware';
 import {
+  // New unified endpoints
+  listMasterData,
+  getMasterDataTree,
+  getCategories,
+  getMasterDataById,
+  getChildrenByParent,
+  createMasterData,
+  updateMasterData,
+  activateMasterData,
+  deactivateMasterData,
+  deleteMasterData,
+  // Deprecated aliases
   listCategories,
   getCategory,
-  createCategory,
-  updateCategory,
-  toggleCategoryStatus,
   listSubcategories,
-  getSubcategory,
   getSubcategoriesByCategory,
-  createSubcategory,
-  updateSubcategory,
-  toggleSubcategoryStatus,
   listTypes,
-  getAllActiveTypes,
-  getType,
   getTypesBySubcategory,
-  createType,
-  updateType,
-  toggleTypeStatus,
+  getAllActiveTypes,
+  // Status (unchanged)
   listStatuses,
   getStatus,
   getAllActiveStatuses,
@@ -29,168 +31,74 @@ import {
   toggleStatusActive,
 } from './master-data.controller';
 import {
-  listCategoriesQuerySchema,
-  createCategorySchema,
-  updateCategorySchema,
-  categoryIdParamSchema,
-  listSubcategoriesQuerySchema,
-  createSubcategorySchema,
-  updateSubcategorySchema,
-  subcategoryIdParamSchema,
-  listTypesQuerySchema,
-  createTypeSchema,
-  updateTypeSchema,
-  typeIdParamSchema,
+  masterDataIdParamSchema,
+  listMasterDataQuerySchema,
+  createMasterDataSchema,
+  updateMasterDataSchema,
+  statusIdParamSchema,
   listStatusesQuerySchema,
   createStatusSchema,
   updateStatusSchema,
-  statusIdParamSchema,
+  // Legacy
+  categoryIdParamSchema,
+  listCategoriesQuerySchema,
+  subcategoryIdParamSchema,
+  listSubcategoriesQuerySchema,
+  typeIdParamSchema,
+  listTypesQuerySchema,
 } from './master-data.validation';
 
 const router = Router();
-
 router.use(authenticate);
 
-router.get(
-  '/categories',
-  validateQuery(listCategoriesQuerySchema),
-  listCategories,
-);
+// ============================================================================
+// NEW: Unified MasterData endpoints
+// ============================================================================
 
-router.get(
-  '/categories/:id',
-  validateParams(categoryIdParamSchema),
-  getCategory,
-);
+/** GET / — list nodes (filterable by level, parentId, isActive, search) */
+router.get('/', validateQuery(listMasterDataQuerySchema), listMasterData);
 
-router.get(
-  '/categories/:categoryId/subcategories',
-  getSubcategoriesByCategory,
-);
+/** GET /tree — full nested tree (category → subcategory → type) */
+router.get('/tree', getMasterDataTree);
 
-router.get(
-  '/subcategories',
-  validateQuery(listSubcategoriesQuerySchema),
-  listSubcategories,
-);
+/** GET /categories — all top-level categories */
+router.get('/categories', getCategories);
 
-router.get(
-  '/subcategories/:id',
-  validateParams(subcategoryIdParamSchema),
-  getSubcategory,
-);
-
-router.get(
-  '/subcategories/:subcategoryId/types',
-  getTypesBySubcategory,
-);
-
-
-
-router.get(
-  '/types',
-  validateQuery(listTypesQuerySchema),
-  listTypes,
-);
-
-router.get(
-  '/types/active',
-  getAllActiveTypes,
-);
-
-router.get(
-  '/types/:id',
-  validateParams(typeIdParamSchema),
-  getType,
-);
-
-router.get(
-  '/statuses',
-  validateQuery(listStatusesQuerySchema),
-  listStatuses,
-);
-
-router.get(
-  '/statuses/active',
-  getAllActiveStatuses,
-);
-
-router.get(
-  '/statuses/:id',
-  validateParams(statusIdParamSchema),
-  getStatus,
-);
-
+/** POST / — create a new node */
 router.post(
-  '/categories',
+  '/',
   authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateBody(createCategorySchema),
-  createCategory,
+  validateBody(createMasterDataSchema),
+  createMasterData,
 );
 
-router.patch(
-  '/categories/:id',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(categoryIdParamSchema),
-  validateBody(updateCategorySchema),
-  updateCategory,
-);
+// ============================================================================
+// DEPRECATED: Legacy endpoints — backed by MasterData service
+// Will be removed after frontend migrates to /master-data endpoints.
+// ============================================================================
 
-router.patch(
-  '/categories/:id/status',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(categoryIdParamSchema),
-  validateBody(updateCategorySchema.pick({ isActive: true })),
-  toggleCategoryStatus,
-);
+/** @deprecated */
+router.get('/categories', validateQuery(listCategoriesQuerySchema), listCategories);
+/** @deprecated */
+router.get('/categories/:id', validateParams(categoryIdParamSchema), getCategory);
+/** @deprecated */
+router.get('/categories/:categoryId/subcategories', getSubcategoriesByCategory);
+/** @deprecated */
+router.get('/subcategories', validateQuery(listSubcategoriesQuerySchema), listSubcategories);
+/** @deprecated */
+router.get('/types/active', getAllActiveTypes);
+/** @deprecated */
+router.get('/types', validateQuery(listTypesQuerySchema), listTypes);
+/** @deprecated */
+router.get('/subcategories/:subcategoryId/types', getTypesBySubcategory);
 
-router.post(
-  '/subcategories',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateBody(createSubcategorySchema),
-  createSubcategory,
-);
+// ============================================================================
+// Status Master (unchanged)
+// ============================================================================
 
-router.patch(
-  '/subcategories/:id',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(subcategoryIdParamSchema),
-  validateBody(updateSubcategorySchema),
-  updateSubcategory,
-);
-
-router.patch(
-  '/subcategories/:id/status',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(subcategoryIdParamSchema),
-  validateBody(updateSubcategorySchema.pick({ isActive: true })),
-  toggleSubcategoryStatus,
-);
-
-
-
-router.post(
-  '/types',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateBody(createTypeSchema),
-  createType,
-);
-
-router.patch(
-  '/types/:id',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(typeIdParamSchema),
-  validateBody(updateTypeSchema),
-  updateType,
-);
-
-router.patch(
-  '/types/:id/status',
-  authorizeRoles('MANAGER', 'TEAM_LEAD'),
-  validateParams(typeIdParamSchema),
-  validateBody(updateTypeSchema.pick({ isActive: true })),
-  toggleTypeStatus,
-);
+router.get('/statuses', validateQuery(listStatusesQuerySchema), listStatuses);
+router.get('/statuses/active', getAllActiveStatuses);
+router.get('/statuses/:id', validateParams(statusIdParamSchema), getStatus);
 
 router.post(
   '/statuses',
@@ -213,6 +121,49 @@ router.patch(
   validateParams(statusIdParamSchema),
   validateBody(updateStatusSchema.pick({ isActive: true })),
   toggleStatusActive,
+);
+
+// ============================================================================
+// GENERIC ID ROUTES (MUST BE LAST to avoid matching string paths like /subcategories)
+// ============================================================================
+
+/** GET /:id — single node with its direct children */
+router.get('/:id', validateParams(masterDataIdParamSchema), getMasterDataById);
+
+/** GET /:id/children — direct children of a node */
+router.get('/:id/children', validateParams(masterDataIdParamSchema), getChildrenByParent);
+
+/** PATCH /:id — update node name */
+router.patch(
+  '/:id',
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
+  validateParams(masterDataIdParamSchema),
+  validateBody(updateMasterDataSchema),
+  updateMasterData,
+);
+
+/** PATCH /:id/activate — activate a single node */
+router.patch(
+  '/:id/activate',
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
+  validateParams(masterDataIdParamSchema),
+  activateMasterData,
+);
+
+/** PATCH /:id/deactivate — deactivate node + all descendants */
+router.patch(
+  '/:id/deactivate',
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
+  validateParams(masterDataIdParamSchema),
+  deactivateMasterData,
+);
+
+/** DELETE /:id — hard delete node if unused */
+router.delete(
+  '/:id',
+  authorizeRoles('MANAGER', 'TEAM_LEAD'),
+  validateParams(masterDataIdParamSchema),
+  deleteMasterData,
 );
 
 export default router;

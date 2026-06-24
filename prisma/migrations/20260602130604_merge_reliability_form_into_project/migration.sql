@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "UserRole" AS ENUM ('ADMIN', 'EMPLOYEE');
+CREATE TYPE "UserRole" AS ENUM ('EMPLOYEE', 'TEAM_LEAD', 'MANAGER');
 
 -- CreateEnum
 CREATE TYPE "ProjectCategory" AS ENUM ('RAC', 'CAG');

@@ -12,8 +12,8 @@ export interface ProjectWithRelations {
   id: string;
   name: string;
   categoryId: string;
-  subcategoryId: string;
-  typeId: string;
+  subcategoryId: string | null;
+  typeId: string | null;
   statusId: string;
   startDate: Date;
   endDate: Date;
@@ -48,12 +48,13 @@ export interface ProjectWithRelations {
   refrigerantQuantity: string | null;
   statusRemark: string | null;
   creator?: { firstName: string; lastName: string; email: string } | null;
-  category?: { id: string; name: string; code: string } | null;
-  subcategory?: { id: string; name: string; code: string } | null;
-  type?: { id: string; name: string; code: string } | null;
+  category?: { id: string; name: string } | null;
+  subcategory?: { id: string; name: string } | null;
+  type?: { id: string; name: string } | null;
   status?: { id: string; code: string; displayName: string; color: string } | null;
   documents?: ProjectDocumentRecord[];
-  reports?: Array<{ id: string; type: string; status: string; updatedAt: Date }>;
+  partReports?: Array<{ id: string; reportStatus: string; reportName: string; updatedAt: Date; testPartList?: { id: string; status: string } | null }>;
+  summaryReport?: { id: string; reportStatus: string; updatedAt: Date; testSummaryList?: { id: string; status: string } | null } | null;
 }
 
 export interface ProjectDocumentRecord {
@@ -77,9 +78,9 @@ export class ProjectRepository {
       where: { id },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
-        category: { select: { id: true, name: true, code: true } },
-        subcategory: { select: { id: true, name: true, code: true } },
-        type: { select: { id: true, name: true, code: true } },
+        category: { select: { id: true, name: true } },
+        subcategory: { select: { id: true, name: true } },
+        type: { select: { id: true, name: true } },
         status: { select: { id: true, code: true, displayName: true, color: true } },
         documents: {
           include: { uploader: { select: { firstName: true, lastName: true, email: true } } },
@@ -95,10 +96,12 @@ export class ProjectRepository {
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProjectWhereInput = {
-      // Only show projects whose linked master data is fully active
+      // Only show projects whose master data hierarchy is entirely active
       category: { isActive: true },
       subcategory: { isActive: true },
-      type: { isActive: true },
+      AND: [
+        { OR: [{ typeId: null }, { type: { isActive: true } }] }
+      ]
     };
     if (query.search) {
       where.name = { contains: query.search, mode: 'insensitive' };
@@ -122,31 +125,27 @@ export class ProjectRepository {
     }
     
     if (query.missingAnyReport) {
+      // Filter to projects that have no part reports or no summary report
       where.OR = [
-        { reports: { none: { type: 'PART_REPORT' } } },
-        { reports: { none: { type: 'SUMMARY_REPORT' } } },
-        { reports: { none: { type: 'TEST_LIST' } } },
+        { partReports: { none: {} } },
+        { summaryReport: null },
       ];
     } else {
       if (query.hasPartReport !== undefined) {
-        where.reports = { ...where.reports, ...(query.hasPartReport ? { some: { type: 'PART_REPORT' } } : { none: { type: 'PART_REPORT' } }) } as any;
+        where.partReports = query.hasPartReport ? { some: {} } : { none: {} };
       }
       if (query.hasTestSummary !== undefined) {
-        // Handle cases where both hasPartReport and hasTestSummary might be queried together.
-        // Prisma's where.reports doesn't easily support both some and none across different types in a single simple object if they conflict.
-        // But we can use AND for complex intersections. Let's build AND array if needed.
         if (!where.AND) where.AND = [];
         const andArray = where.AND as Prisma.ProjectWhereInput[];
-        
         if (query.hasPartReport !== undefined) {
-          andArray.push(query.hasPartReport ? { reports: { some: { type: 'PART_REPORT' } } } : { reports: { none: { type: 'PART_REPORT' } } });
+          andArray.push(query.hasPartReport ? { partReports: { some: {} } } : { partReports: { none: {} } });
         }
         if (query.hasTestSummary !== undefined) {
-          andArray.push(query.hasTestSummary ? { reports: { some: { type: 'SUMMARY_REPORT' } } } : { reports: { none: { type: 'SUMMARY_REPORT' } } });
+          andArray.push(query.hasTestSummary ? { summaryReport: { isNot: null } } : { summaryReport: null });
         }
-        delete where.reports; // Clean up the single assignment if we use AND
+        delete (where as any).partReports;
       } else if (query.hasPartReport !== undefined) {
-        where.reports = query.hasPartReport ? { some: { type: 'PART_REPORT' } } : { none: { type: 'PART_REPORT' } };
+        where.partReports = query.hasPartReport ? { some: {} } : { none: {} };
       }
     }
 
@@ -158,12 +157,13 @@ export class ProjectRepository {
         orderBy: { [query.sortBy ?? 'createdAt']: query.sortOrder ?? 'desc' },
         include: {
           creator: { select: { firstName: true, lastName: true, email: true } },
-          category: { select: { id: true, name: true, code: true } },
-          subcategory: { select: { id: true, name: true, code: true } },
-          type: { select: { id: true, name: true, code: true } },
+          category: { select: { id: true, name: true } },
+          subcategory: { select: { id: true, name: true } },
+          type: { select: { id: true, name: true } },
           status: { select: { id: true, code: true, displayName: true, color: true } },
           _count: { select: { documents: true } },
-          reports: { select: { id: true, type: true, status: true, updatedAt: true } },
+          partReports: { select: { id: true, reportStatus: true, reportName: true, updatedAt: true, testPartList: { select: { id: true, status: true } } } },
+          summaryReport: { select: { id: true, reportStatus: true, updatedAt: true, testSummaryList: { select: { id: true, status: true } } } },
         },
       }),
       this.db.count({ where }),
@@ -219,9 +219,9 @@ export class ProjectRepository {
       },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
-        category: { select: { id: true, name: true, code: true } },
-        subcategory: { select: { id: true, name: true, code: true } },
-        type: { select: { id: true, name: true, code: true } },
+        category: { select: { id: true, name: true } },
+        subcategory: { select: { id: true, name: true } },
+        type: { select: { id: true, name: true } },
         status: { select: { id: true, code: true, displayName: true, color: true } },
       },
     }) as Promise<ProjectWithRelations>;
@@ -243,9 +243,9 @@ export class ProjectRepository {
       data: updateData,
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
-        category: { select: { id: true, name: true, code: true } },
-        subcategory: { select: { id: true, name: true, code: true } },
-        type: { select: { id: true, name: true, code: true } },
+        category: { select: { id: true, name: true } },
+        subcategory: { select: { id: true, name: true } },
+        type: { select: { id: true, name: true } },
         status: { select: { id: true, code: true, displayName: true, color: true } },
         documents: {
           include: { uploader: { select: { firstName: true, lastName: true, email: true } } },
@@ -264,9 +264,9 @@ export class ProjectRepository {
       },
       include: {
         creator: { select: { firstName: true, lastName: true, email: true } },
-        category: { select: { id: true, name: true, code: true } },
-        subcategory: { select: { id: true, name: true, code: true } },
-        type: { select: { id: true, name: true, code: true } },
+        category: { select: { id: true, name: true } },
+        subcategory: { select: { id: true, name: true } },
+        type: { select: { id: true, name: true } },
         status: { select: { id: true, code: true, displayName: true, color: true } },
         documents: {
           include: { uploader: { select: { firstName: true, lastName: true, email: true } } },

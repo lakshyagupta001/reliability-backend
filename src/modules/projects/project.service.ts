@@ -160,7 +160,19 @@ export class ProjectService {
       type: p.type as PublicProject['type'],
       status: p.status as PublicProject['status'],
       documents: p.documents?.map((d) => this.toPublicDocument(d)),
-      reports: p.reports as PublicProject['reports'],
+      partReports: p.partReports?.map((r) => ({
+        id: r.id as string,
+        reportName: r.reportName as string,
+        reportStatus: r.reportStatus as PublicProject['partReports'] extends Array<infer T> ? T extends { reportStatus: infer S } ? S : never : never,
+        updatedAt: (r.updatedAt as Date).toISOString(),
+        testPartList: r.testPartList ? { id: r.testPartList.id as string, status: r.testPartList.status as any } : null,
+      })),
+      summaryReport: p.summaryReport ? {
+        id: (p.summaryReport as any).id as string,
+        reportStatus: (p.summaryReport as any).reportStatus as any,
+        updatedAt: ((p.summaryReport as any).updatedAt as Date).toISOString(),
+        testSummaryList: (p.summaryReport as any).testSummaryList ? { id: (p.summaryReport as any).testSummaryList.id as string, status: (p.summaryReport as any).testSummaryList.status as any } : null,
+      } : null,
     };
   }
 

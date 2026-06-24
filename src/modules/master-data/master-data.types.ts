@@ -1,126 +1,74 @@
-import { Category, Subcategory, Type, StatusMaster } from '@prisma/client';
+import { MasterDataLevel } from '@prisma/client';
 
-export type { Category, Subcategory, Type, StatusMaster };
+export type { MasterDataLevel };
 
-export interface PublicCategory {
+// ============================================================================
+// Public response shapes
+// ============================================================================
+
+export interface PublicMasterData {
   id: string;
   name: string;
-  code: string;
-  description: string | null;
+  level: MasterDataLevel;
+  parentId: string | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
-  subcategories?: PublicSubcategory[];
+  children?: PublicMasterData[];
+  projectCount?: number;
+  /** breadcrumb: [category, subcategory?, type?] */
+  ancestors?: { id: string; name: string; level: MasterDataLevel }[];
 }
 
-export interface PublicSubcategory {
+export interface MasterDataTree {
   id: string;
-  categoryId: string;
   name: string;
-  code: string;
-  description: string | null;
+  level: 'CATEGORY';
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  category?: { id: string; name: string; code: string };
-  types?: PublicType[];
+  children: MasterDataSubcategoryNode[];
 }
 
-export interface PublicType {
+export interface MasterDataSubcategoryNode {
   id: string;
-  subcategoryId: string;
   name: string;
-  code: string;
-  description: string | null;
+  level: 'SUBCATEGORY';
+  parentId: string;
   isActive: boolean;
-  createdAt: string;
-  updatedAt: string;
-  subcategory?: {
-    id: string;
-    name: string;
-    code: string;
-    category?: { id: string; name: string; code: string };
-  };
+  children: MasterDataTypeNode[];
 }
 
-export interface PublicStatusMaster {
+export interface MasterDataTypeNode {
   id: string;
-  code: string;
-  displayName: string;
-  color: string;
+  name: string;
+  level: 'TYPE';
+  parentId: string;
   isActive: boolean;
-  isSystem: boolean;
-  createdAt: string;
-  updatedAt: string;
 }
 
-export interface CreateCategoryBody {
+// ============================================================================
+// Request body shapes
+// ============================================================================
+
+export interface CreateMasterDataBody {
   name: string;
-  code: string;
-  description?: string;
+  level: MasterDataLevel;
+  /** Required when level = SUBCATEGORY or TYPE */
+  parentId?: string;
 }
 
-export interface UpdateCategoryBody {
-  name?: string;
-  description?: string;
-  isActive?: boolean;
-}
-
-export interface CreateSubcategoryBody {
-  categoryId: string;
+export interface UpdateMasterDataBody {
   name: string;
-  code: string;
-  description?: string;
 }
 
-export interface UpdateSubcategoryBody {
-  categoryId?: string;
-  name?: string;
-  description?: string;
-  isActive?: boolean;
-}
-
-export interface CreateTypeBody {
-  subcategoryId: string;
-  name: string;
-  code: string;
-  description?: string;
-}
-
-export interface UpdateTypeBody {
-  subcategoryId?: string;
-  name?: string;
-  description?: string;
-  isActive?: boolean;
-}
-
-export interface CreateStatusBody {
-  code: string;
-  displayName: string;
-  color?: string;
-}
-
-export interface UpdateStatusBody {
-  displayName?: string;
-  color?: string;
-  isActive?: boolean;
-}
+// ============================================================================
+// Query shapes
+// ============================================================================
 
 export interface ListMasterDataQuery {
-  page?: number;
-  limit?: number;
+  page: number;
+  limit: number;
   search?: string;
+  level?: MasterDataLevel;
+  parentId?: string;
   isActive?: boolean;
-  categoryId?: string;
-}
-
-export interface SubcategoryListQuery {
-  categoryId?: string;
-  isActive?: boolean;
-}
-
-export interface TypeListQuery {
-  isActive?: boolean;
-  categoryId?: string;
-  subcategoryId?: string;
 }

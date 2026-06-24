@@ -1,259 +1,212 @@
 import type { Response } from 'express';
 import { asyncHandler } from '../../shared/utils/async-handler';
-import { sendSuccess, sendPaginatedSuccess, sendNoContentSuccess, type PaginationMeta } from '../../shared/utils/api-response';
+import {
+  sendSuccess,
+  sendPaginatedSuccess,
+  type PaginationMeta,
+} from '../../shared/utils/api-response';
 import { type AuthRequest } from '../../shared/middlewares/auth.middleware';
 import { masterDataService } from './master-data.service';
 import type {
-  CreateCategoryBody,
-  UpdateCategoryBody,
-  CreateSubcategoryBody,
-  UpdateSubcategoryBody,
-  CreateTypeBody,
-  UpdateTypeBody,
-  CreateStatusBody,
-  UpdateStatusBody,
+  CreateMasterDataBody,
+  UpdateMasterDataBody,
+  ListMasterDataQuery,
 } from './master-data.types';
+import type { MasterDataLevel } from '@prisma/client';
 
-export const listCategories = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const query = req.validatedQuery as { page: number; limit: number; search?: string; isActive?: boolean };
-    const { rows, total, page, limit, totalPages } = await masterDataService.listCategories(query);
+// ============================================================================
+// MasterData endpoints
+// ============================================================================
 
-    const pagination: PaginationMeta = {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-    };
+export const listMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const query = req.validatedQuery as ListMasterDataQuery;
+  const { rows, total, page, limit, totalPages } = await masterDataService.list(query);
 
-    return sendPaginatedSuccess(res, 200, 'Categories fetched successfully', rows, pagination);
-  },
-);
+  const pagination: PaginationMeta = {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPreviousPage: page > 1,
+  };
 
-export const getCategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const category = await masterDataService.getCategoryById(id);
-    return sendSuccess(res, 200, 'Category fetched successfully', category);
-  },
-);
+  return sendPaginatedSuccess(res, 200, 'Master data fetched successfully', rows, pagination);
+});
 
-export const createCategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const body = req.validatedBody as CreateCategoryBody;
-    const category = await masterDataService.createCategory(body);
-    return sendSuccess(res, 201, 'Category created successfully', category);
-  },
-);
+export const getMasterDataTree = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const tree = await masterDataService.getTree(filter);
+  return sendSuccess(res, 200, 'Master data tree fetched successfully', tree);
+});
 
-export const updateCategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const body = req.validatedBody as UpdateCategoryBody;
-    const category = await masterDataService.updateCategory(id, body);
-    return sendSuccess(res, 200, 'Category updated successfully', category);
-  },
-);
+export const getCategories = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const categories = await masterDataService.getCategories(filter);
+  return sendSuccess(res, 200, 'Categories fetched successfully', categories);
+});
 
-export const toggleCategoryStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const { isActive } = req.body as { isActive: boolean };
-    const category = await masterDataService.toggleCategoryStatus(id, isActive);
-    return sendSuccess(res, 200, `Category ${isActive ? 'activated' : 'deactivated'} successfully`, category);
-  },
-);
+export const getMasterDataById = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const node = await masterDataService.getById(id);
+  return sendSuccess(res, 200, 'Master data node fetched successfully', node);
+});
 
-export const listSubcategories = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const query = req.validatedQuery as { page: number; limit: number; categoryId?: string; search?: string; isActive?: boolean };
-    const { rows, total, page, limit, totalPages } = await masterDataService.listSubcategories(query);
+export const getChildrenByParent = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const children = await masterDataService.getChildren(id, filter);
+  return sendSuccess(res, 200, 'Children fetched successfully', children);
+});
 
-    const pagination: PaginationMeta = {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-    };
+export const createMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const body = req.validatedBody as CreateMasterDataBody;
+  const node = await masterDataService.create(body);
+  return sendSuccess(res, 201, 'Master data node created successfully', node);
+});
 
-    return sendPaginatedSuccess(res, 200, 'Subcategories fetched successfully', rows, pagination);
-  },
-);
+export const updateMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const body = req.validatedBody as UpdateMasterDataBody;
+  const node = await masterDataService.update(id, body);
+  return sendSuccess(res, 200, 'Master data node updated successfully', node);
+});
 
-export const getSubcategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const subcategory = await masterDataService.getSubcategoryById(id);
-    return sendSuccess(res, 200, 'Subcategory fetched successfully', subcategory);
-  },
-);
+export const activateMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const node = await masterDataService.activate(id);
+  return sendSuccess(res, 200, 'Node activated successfully', node);
+});
 
-export const getSubcategoriesByCategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { categoryId } = req.params as { categoryId: string };
-    const { isActive } = req.query as { isActive?: string };
-    const subcategories = await masterDataService.getSubcategoriesByCategoryId(
-      categoryId,
-      isActive === 'true' ? true : isActive === 'false' ? false : undefined,
-    );
-    return sendSuccess(res, 200, 'Subcategories fetched successfully', subcategories);
-  },
-);
+export const deactivateMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const node = await masterDataService.deactivate(id);
+  return sendSuccess(res, 200, 'Node and all its children deactivated successfully', node);
+});
 
-export const createSubcategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const body = req.validatedBody as CreateSubcategoryBody;
-    const subcategory = await masterDataService.createSubcategory(body);
-    return sendSuccess(res, 201, 'Subcategory created successfully', subcategory);
-  },
-);
+export const deleteMasterData = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  await masterDataService.deleteNode(id);
+  return sendSuccess(res, 200, 'Master data deleted successfully', null);
+});
 
-export const updateSubcategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const body = req.validatedBody as UpdateSubcategoryBody;
-    const subcategory = await masterDataService.updateSubcategory(id, body);
-    return sendSuccess(res, 200, 'Subcategory updated successfully', subcategory);
-  },
-);
+// ============================================================================
+// Deprecated aliases — backed by MasterData service (kept for frontend compatibility)
+// These will be removed after the frontend migrates to /master-data endpoints.
+// ============================================================================
 
-export const toggleSubcategoryStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const { isActive } = req.body as { isActive: boolean };
-    const subcategory = await masterDataService.toggleSubcategoryStatus(id, isActive);
-    return sendSuccess(res, 200, `Subcategory ${isActive ? 'activated' : 'deactivated'} successfully`, subcategory);
-  },
-);
+/** @deprecated Use GET /master-data?level=CATEGORY */
+export const listCategories = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const categories = await masterDataService.getCategories(filter);
+  return sendSuccess(res, 200, 'Categories fetched successfully', categories);
+});
 
-export const listTypes = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const query = req.validatedQuery as { page: number; limit: number; search?: string; isActive?: boolean; categoryId?: string; subcategoryId?: string };
-    const { rows, total, page, limit, totalPages } = await masterDataService.listTypes(query);
+/** @deprecated Use GET /master-data/:id */
+export const getCategory = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const node = await masterDataService.getById(id);
+  return sendSuccess(res, 200, 'Category fetched successfully', node);
+});
 
-    const pagination: PaginationMeta = {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-    };
+/** @deprecated Use GET /master-data?level=SUBCATEGORY&parentId=:categoryId */
+export const listSubcategories = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { categoryId, isActive } = req.query as { categoryId?: string; isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const children = categoryId
+    ? await masterDataService.getChildren(categoryId, filter)
+    : (await masterDataService.list({ page: 1, limit: 200, level: 'SUBCATEGORY' as MasterDataLevel, isActive: filter })).rows;
+  const mapped = children.map(c => ({ ...c, categoryId: c.parentId }));
+  return sendSuccess(res, 200, 'Subcategories fetched successfully', mapped);
+});
 
-    return sendPaginatedSuccess(res, 200, 'Types fetched successfully', rows, pagination);
-  },
-);
+/** @deprecated Use GET /master-data/:categoryId/children */
+export const getSubcategoriesByCategory = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { categoryId } = req.params as { categoryId: string };
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const children = await masterDataService.getChildren(categoryId, filter);
+  const mapped = children.map(c => ({ ...c, categoryId: c.parentId }));
+  return sendSuccess(res, 200, 'Subcategories fetched successfully', mapped);
+});
 
-export const getAllActiveTypes = asyncHandler(
-  async (_req: AuthRequest, res: Response) => {
-    const types = await masterDataService.getAllActiveTypes();
-    return sendSuccess(res, 200, 'Types fetched successfully', types);
-  },
-);
+/** @deprecated Use GET /master-data?level=TYPE&parentId=:subcategoryId */
+export const listTypes = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { subcategoryId, isActive } = req.query as { subcategoryId?: string; isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const children = subcategoryId
+    ? await masterDataService.getChildren(subcategoryId, filter)
+    : (await masterDataService.list({ page: 1, limit: 200, level: 'TYPE' as MasterDataLevel, isActive: filter })).rows;
+  const mapped = children.map(c => ({ ...c, subcategoryId: c.parentId }));
+  return sendSuccess(res, 200, 'Types fetched successfully', mapped);
+});
 
-export const getType = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const type = await masterDataService.getTypeById(id);
-    return sendSuccess(res, 200, 'Type fetched successfully', type);
-  },
-);
+/** @deprecated Use GET /master-data/:subcategoryId/children */
+export const getTypesBySubcategory = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { subcategoryId } = req.params as { subcategoryId: string };
+  const { isActive } = req.query as { isActive?: string };
+  const filter = isActive === 'true' ? true : isActive === 'false' ? false : undefined;
+  const children = await masterDataService.getChildren(subcategoryId, filter);
+  const mapped = children.map(c => ({ ...c, subcategoryId: c.parentId }));
+  return sendSuccess(res, 200, 'Types fetched successfully', mapped);
+});
 
-export const getTypesBySubcategory = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { subcategoryId } = req.params as { subcategoryId: string };
-    const types = await masterDataService.getTypesBySubcategoryId(subcategoryId);
-    return sendSuccess(res, 200, 'Types fetched successfully', types);
-  },
-);
+/** @deprecated Use GET /master-data?level=TYPE&isActive=true */
+export const getAllActiveTypes = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const types = await masterDataService.list({ page: 1, limit: 1000, level: 'TYPE' as MasterDataLevel, isActive: true });
+  const mapped = types.rows.map(c => ({ ...c, subcategoryId: c.parentId }));
+  return sendSuccess(res, 200, 'Active types fetched successfully', mapped);
+});
 
-export const createType = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const body = req.validatedBody as CreateTypeBody;
-    const type = await masterDataService.createType(body);
-    return sendSuccess(res, 201, 'Type created successfully', type);
-  },
-);
+// ============================================================================
+// Status Master (unchanged)
+// ============================================================================
 
-export const updateType = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const body = req.validatedBody as UpdateTypeBody;
-    const type = await masterDataService.updateType(id, body);
-    return sendSuccess(res, 200, 'Type updated successfully', type);
-  },
-);
+export const listStatuses = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const query = req.validatedQuery as { page: number; limit: number; search?: string; isActive?: boolean };
+  const { rows, total, page, limit, totalPages } = await masterDataService.listStatuses(query);
+  const pagination: PaginationMeta = {
+    page,
+    limit,
+    total,
+    totalPages,
+    hasNextPage: page < totalPages,
+    hasPreviousPage: page > 1,
+  };
+  return sendPaginatedSuccess(res, 200, 'Statuses fetched successfully', rows, pagination);
+});
 
-export const toggleTypeStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const { isActive } = req.body as { isActive: boolean };
-    const type = await masterDataService.toggleTypeStatus(id, isActive);
-    return sendSuccess(res, 200, `Type ${isActive ? 'activated' : 'deactivated'} successfully`, type);
-  },
-);
+export const getStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const status = await masterDataService.getStatusById(id);
+  return sendSuccess(res, 200, 'Status fetched successfully', status);
+});
 
+export const getAllActiveStatuses = asyncHandler(async (_req: AuthRequest, res: Response) => {
+  const statuses = await masterDataService.getAllActiveStatuses();
+  return sendSuccess(res, 200, 'Statuses fetched successfully', statuses);
+});
 
+export const createStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const body = req.validatedBody as { code: string; displayName: string; color?: string };
+  const status = await masterDataService.createStatus(body);
+  return sendSuccess(res, 201, 'Status created successfully', status);
+});
 
-export const listStatuses = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const query = req.validatedQuery as { page: number; limit: number; search?: string; isActive?: boolean };
-    const { rows, total, page, limit, totalPages } = await masterDataService.listStatuses(query);
+export const updateStatus = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const body = req.validatedBody as { displayName?: string; color?: string; isActive?: boolean };
+  const status = await masterDataService.updateStatus(id, body);
+  return sendSuccess(res, 200, 'Status updated successfully', status);
+});
 
-    const pagination: PaginationMeta = {
-      page,
-      limit,
-      total,
-      totalPages,
-      hasNextPage: page < totalPages,
-      hasPreviousPage: page > 1,
-    };
-
-    return sendPaginatedSuccess(res, 200, 'Statuses fetched successfully', rows, pagination);
-  },
-);
-
-export const getStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const status = await masterDataService.getStatusById(id);
-    return sendSuccess(res, 200, 'Status fetched successfully', status);
-  },
-);
-
-export const getAllActiveStatuses = asyncHandler(
-  async (_req: AuthRequest, res: Response) => {
-    const statuses = await masterDataService.getAllActiveStatuses();
-    return sendSuccess(res, 200, 'Statuses fetched successfully', statuses);
-  },
-);
-
-export const createStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const body = req.validatedBody as CreateStatusBody;
-    const status = await masterDataService.createStatus(body);
-    return sendSuccess(res, 201, 'Status created successfully', status);
-  },
-);
-
-export const updateStatus = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const body = req.validatedBody as UpdateStatusBody;
-    const status = await masterDataService.updateStatus(id, body);
-    return sendSuccess(res, 200, 'Status updated successfully', status);
-  },
-);
-
-export const toggleStatusActive = asyncHandler(
-  async (req: AuthRequest, res: Response) => {
-    const { id } = req.params as { id: string };
-    const { isActive } = req.body as { isActive: boolean };
-    const status = await masterDataService.toggleStatusActive(id, isActive);
-    return sendSuccess(res, 200, `Status ${isActive ? 'activated' : 'deactivated'} successfully`, status);
-  },
-);
+export const toggleStatusActive = asyncHandler(async (req: AuthRequest, res: Response) => {
+  const { id } = req.params as { id: string };
+  const { isActive } = req.body as { isActive: boolean };
+  const status = await masterDataService.toggleStatusActive(id, isActive);
+  return sendSuccess(res, 200, `Status ${isActive ? 'activated' : 'deactivated'} successfully`, status);
+});
