@@ -1,4 +1,4 @@
-import type { ReportStatus } from '@prisma/client';
+import type { ReportStatus } from '../../../shared/types/reports.types';
 
 export interface PartReportUserSummary {
   firstName: string;

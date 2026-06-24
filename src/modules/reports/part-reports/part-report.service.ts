@@ -32,12 +32,22 @@ export class PartReportService {
     const report = await partReportRepository.create(data, userId);
 
     // Auto-create linked TestPartList (always isDraft=false — it manages its own draft state independently)
-    await prisma.testPartList.create({
+    const crypto = require('crypto');
+    await prisma.reports.create({
       data: {
-        partReportId: report.id,
-        formData: {},
-        isDraft: false,
-        status: 'PENDING',
+        id: crypto.randomUUID(),
+        type: 'TEST_LIST',
+        projectId: report.projectId,
+        title: 'Test Part List',
+        format: 'TEST_LIST',
+        createdBy: userId,
+        updatedAt: new Date(),
+        data: {
+          partReportId: report.id,
+          formData: {},
+          isDraft: false,
+          status: 'PENDING',
+        }
       },
     });
 
@@ -70,9 +80,8 @@ export class PartReportService {
     
     // Logical reset deletion if associated TestPartList exists
     if (report.testPartList) {
-      const resetUpdateData: Prisma.PartReportUpdateInput = {
+      const resetUpdateData: Record<string, any> = {
         reportName: '',
-        reportStatus: 'PENDING',
         isDraft: false,
         data: {},
         checkedByName: null,
@@ -81,13 +90,12 @@ export class PartReportService {
         reportNumber: null,
         lastActionBy: null,
         lastActionType: null,
-        rejectionHistory: Prisma.DbNull,
         generatedAt: null,
       };
-      
-      if (report.preparedById) resetUpdateData.preparedBy = { disconnect: true };
-      if (report.checkedById) resetUpdateData.checker = { disconnect: true };
-      if (report.approvedById) resetUpdateData.approver = { disconnect: true };
+      if (report.preparedById) resetUpdateData.preparedById = null;
+      if (report.checkedById) resetUpdateData.checkedById = null;
+      if (report.approvedById) resetUpdateData.approvedById = null;
+      resetUpdateData.rejectionHistory = [];
 
       await partReportRepository.updateStatus(id, 'PENDING', resetUpdateData);
     } else {

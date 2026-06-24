@@ -1,4 +1,5 @@
-import type { ProjectScope, ReportStatus } from '@prisma/client';
+import type { ProjectScope } from '@prisma/client';
+import type { ReportStatus } from '../../shared/types/reports.types';
 
 export type { ProjectScope };
 export type { ReportStatus };
@@ -35,8 +36,8 @@ export interface ListProjectsQuery {
 export interface CreateProjectBody {
   name: string;
   categoryId: string;
-  subcategoryId?: string;
-  typeId?: string;
+  subcategoryId: string;
+  typeId: string;
   statusId: string;
   startDate: string;
   endDate: string;
@@ -72,8 +73,8 @@ export interface CreateProjectBody {
 export interface UpdateProjectBody {
   name?: string;
   categoryId?: string;
-  subcategoryId?: string | null;
-  typeId?: string | null;
+  subcategoryId?: string;
+  typeId?: string;
   statusId?: string;
   startDate?: string;
   endDate?: string;

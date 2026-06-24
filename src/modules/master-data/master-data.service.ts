@@ -7,8 +7,8 @@ import type {
   CreateMasterDataBody,
   UpdateMasterDataBody,
   ListMasterDataQuery,
+  MasterDataLevel,
 } from './master-data.types';
-import type { MasterDataLevel } from '@prisma/client';
 
 // ============================================================================
 // Mapping helpers

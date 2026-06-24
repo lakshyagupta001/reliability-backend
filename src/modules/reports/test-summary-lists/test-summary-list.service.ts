@@ -1,9 +1,9 @@
 import { testSummaryListRepository } from './test-summary-list.repository';
 import { summaryReportRepository } from '../summary-reports/summary-report.repository';
-import { Prisma, type ReportStatus } from '@prisma/client';
 import { NotFoundError } from '../../../shared/utils/errors/not-found-error';
 import { AuthorizationError } from '../../../shared/utils/errors/authorization-error';
 import { BadRequestError } from '../../../shared/utils/errors/bad-request-error';
+import type { ReportStatus } from '../../../shared/types/reports.types';
 import type { UpdateTestSummaryListBody } from './test-summary-list.types';
 
 export class TestSummaryListService {
@@ -21,29 +21,28 @@ export class TestSummaryListService {
 
   async update(id: string, data: UpdateTestSummaryListBody, userId: string) {
     const current = await this.getById(id);
-    const updateData: Prisma.TestSummaryListUpdateInput = {};
+    const updateData: Record<string, any> = {};
 
-    // Re-connect the parent report preparer if it was logically deleted/reset previously
     if (current.summaryReport && !current.summaryReport.preparedById) {
-      await summaryReportRepository.update(current.summaryReportId, { preparedBy: { connect: { id: userId } } });
+      await summaryReportRepository.update(current.summaryReportId, { preparedById: userId });
     }
 
     if (data.formData !== undefined) {
-      updateData.formData = data.formData as Prisma.InputJsonValue;
+      updateData.formData = data.formData;
     }
     if (data.checkedByName !== undefined) updateData.checkedByName = data.checkedByName;
     if (data.approvedByName !== undefined) updateData.approvedByName = data.approvedByName;
 
     if (data.checkedById !== undefined) {
       const cid = data.checkedById || null;
-      updateData.checker = cid ? { connect: { id: cid } } : { disconnect: true };
+      updateData.checkedById = cid;
       if (cid && (current.status === 'PENDING' || current.status === 'GENERATED')) updateData.status = 'PENDING_REVIEW';
       else if (!cid && current.status === 'PENDING_REVIEW') updateData.status = 'PENDING';
     }
 
     if (data.approvedById !== undefined) {
       const aid = data.approvedById || null;
-      updateData.approver = aid ? { connect: { id: aid } } : { disconnect: true };
+      updateData.approvedById = aid;
       if (aid && current.status === 'REVIEWED') updateData.status = 'PENDING_APPROVAL';
       else if (!aid && current.status === 'PENDING_APPROVAL') updateData.status = 'REVIEWED';
     }
@@ -57,7 +56,7 @@ export class TestSummaryListService {
     if (tsl.checkedById !== userId) throw new AuthorizationError('Not authorized to review');
     
     const nextStatus: ReportStatus = tsl.approvedById ? 'PENDING_APPROVAL' : 'REVIEWED';
-    const updateData: Prisma.TestSummaryListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus,
       lastActionBy: tsl.checker ? `${tsl.checker.firstName} ${tsl.checker.lastName}` : null,
       lastActionType: 'REVIEWED',
@@ -74,7 +73,7 @@ export class TestSummaryListService {
     if (tsl.status !== 'PENDING_APPROVAL') throw new BadRequestError('Must be reviewed before approval');
     if (tsl.approvedById !== userId) throw new AuthorizationError('Not authorized to approve');
     
-    const updateData: Prisma.TestSummaryListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: 'APPROVED',
       lastActionBy: tsl.approver ? `${tsl.approver.firstName} ${tsl.approver.lastName}` : null,
       lastActionType: 'APPROVED',
@@ -106,12 +105,12 @@ export class TestSummaryListService {
     const existingHistory = Array.isArray(tsl.rejectionHistory) ? [...tsl.rejectionHistory] : [];
     const rejectionHistory = [...existingHistory, { rejectedBy: userName, stage, remark, rejectedAt: new Date().toISOString() }];
     
-    const updateData: Prisma.TestSummaryListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus, 
       lastActionBy: userName, 
       lastActionType: nextStatus, 
       lastActionAt: new Date(), 
-      rejectionHistory: rejectionHistory as any
+      rejectionHistory
     };
 
     const updated = await testSummaryListRepository.update(id, updateData);
@@ -133,7 +132,7 @@ export class TestSummaryListService {
     else if (tsl.status === 'APPROVAL_REJECTED') nextStatus = 'PENDING_APPROVAL';
     else throw new BadRequestError('Not in a rejected state');
     
-    const updateData: Prisma.TestSummaryListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus, 
       lastActionType: 'RESUBMITTED', 
       lastActionAt: new Date()
@@ -154,7 +153,7 @@ export class TestSummaryListService {
     const hasCheckedBy = tsl.checkedById;
     const nextStatus: ReportStatus = hasCheckedBy ? 'PENDING_REVIEW' : 'GENERATED';
 
-    const updateData: Prisma.TestSummaryListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus,
       isDraft: false,
       generatedAt: new Date(),
@@ -189,7 +188,6 @@ export class TestSummaryListService {
     const tsl = await this.getById(id);
     if (tsl.summaryReport?.preparedById && tsl.summaryReport.preparedById !== userId) throw new AuthorizationError('Only the creator can delete the list');
 
-    // Reset the Test Summary List in place — do NOT touch the parent Summary Report
     await testSummaryListRepository.update(id, {
       status: 'PENDING',
       isDraft: false,
@@ -200,9 +198,9 @@ export class TestSummaryListService {
       lastActionBy: null,
       lastActionType: null,
       lastActionAt: null,
-      rejectionHistory: Prisma.DbNull,
-      checker: { disconnect: true },
-      approver: { disconnect: true },
+      rejectionHistory: [],
+      checkedById: null,
+      approvedById: null,
     });
   }
 }

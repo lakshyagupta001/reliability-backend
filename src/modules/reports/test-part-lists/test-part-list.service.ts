@@ -1,58 +1,45 @@
 import { testPartListRepository } from './test-part-list.repository';
-import { partReportRepository } from '../part-reports/part-report.repository';
-import { Prisma } from '@prisma/client';
-import type { ReportStatus } from '@prisma/client';
 import { NotFoundError } from '../../../shared/utils/errors/not-found-error';
 import { AuthorizationError } from '../../../shared/utils/errors/authorization-error';
 import { BadRequestError } from '../../../shared/utils/errors/bad-request-error';
+import type { ReportStatus } from '../../../shared/types/reports.types';
 import type { UpdateTestPartListBody } from './test-part-list.types';
 
 export class TestPartListService {
-  async getByPartReportId(partReportId: string) {
-    const tpl = await testPartListRepository.findByPartReportId(partReportId);
-    if (!tpl) throw new NotFoundError('Test Part List');
-    return tpl;
-  }
-
   async getById(id: string) {
     const tpl = await testPartListRepository.findById(id);
     if (!tpl) throw new NotFoundError('Test Part List');
     return tpl;
   }
 
+  async getByPartReportId(partReportId: string) {
+    const tpl = await testPartListRepository.findByPartReportId(partReportId);
+    if (!tpl) throw new NotFoundError('Test Part List');
+    return tpl;
+  }
+
   async update(id: string, data: UpdateTestPartListBody, userId: string) {
     const current = await this.getById(id);
-    const updateData: Prisma.TestPartListUpdateInput = {};
-
-    // Re-connect the parent report creator if it was logically deleted/reset previously
-    if (current.partReport && !current.partReport.createdById) {
-      await partReportRepository.update(current.partReportId, {}, current.partReport as any, userId);
-    }
+    const updateData: Record<string, any> = {};
 
     if (data.formData !== undefined) {
-      updateData.formData = data.formData as Prisma.InputJsonValue;
+      updateData.formData = data.formData;
     }
     if (data.checkedByName !== undefined) updateData.checkedByName = data.checkedByName;
     if (data.approvedByName !== undefined) updateData.approvedByName = data.approvedByName;
 
     if (data.checkedById !== undefined) {
-      const checkedId = data.checkedById || null;
-      updateData.checker = checkedId ? { connect: { id: checkedId } } : { disconnect: true };
-      if (checkedId && (current.status === 'GENERATED' || current.status === 'PENDING')) {
-        updateData.status = 'PENDING_REVIEW';
-      } else if (!checkedId && current.status === 'PENDING_REVIEW') {
-        updateData.status = 'PENDING';
-      }
+      const cid = data.checkedById || null;
+      updateData.checkedById = cid;
+      if (cid && (current.status === 'PENDING' || current.status === 'GENERATED')) updateData.status = 'PENDING_REVIEW';
+      else if (!cid && current.status === 'PENDING_REVIEW') updateData.status = 'PENDING';
     }
 
     if (data.approvedById !== undefined) {
-      const approvedId = data.approvedById || null;
-      updateData.approver = approvedId ? { connect: { id: approvedId } } : { disconnect: true };
-      if (approvedId && current.status === 'REVIEWED') {
-        updateData.status = 'PENDING_APPROVAL';
-      } else if (!approvedId && current.status === 'PENDING_APPROVAL') {
-        updateData.status = 'REVIEWED';
-      }
+      const aid = data.approvedById || null;
+      updateData.approvedById = aid;
+      if (aid && current.status === 'REVIEWED') updateData.status = 'PENDING_APPROVAL';
+      else if (!aid && current.status === 'PENDING_APPROVAL') updateData.status = 'REVIEWED';
     }
 
     return testPartListRepository.update(id, updateData);
@@ -60,11 +47,11 @@ export class TestPartListService {
 
   async review(id: string, userId: string) {
     const tpl = await this.getById(id);
-    if (tpl.status !== 'PENDING_REVIEW') throw new BadRequestError('Test Part List is not pending review');
-    if (tpl.checkedById !== userId) throw new AuthorizationError('Not authorized to review this Test Part List');
-
+    if (tpl.status !== 'PENDING_REVIEW') throw new BadRequestError('Not pending review');
+    if (tpl.checkedById !== userId) throw new AuthorizationError('Not authorized to review');
+    
     const nextStatus: ReportStatus = tpl.approvedById ? 'PENDING_APPROVAL' : 'REVIEWED';
-    const updateData: Prisma.TestPartListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus,
       lastActionBy: tpl.checker ? `${tpl.checker.firstName} ${tpl.checker.lastName}` : null,
       lastActionType: 'REVIEWED',
@@ -78,16 +65,16 @@ export class TestPartListService {
 
   async approve(id: string, userId: string) {
     const tpl = await this.getById(id);
-    if (tpl.status !== 'PENDING_APPROVAL') throw new BadRequestError('Test Part List must be reviewed before approval');
-    if (tpl.approvedById !== userId) throw new AuthorizationError('Not authorized to approve this Test Part List');
-
-    const updateData: Prisma.TestPartListUpdateInput = {
+    if (tpl.status !== 'PENDING_APPROVAL') throw new BadRequestError('Must be reviewed before approval');
+    if (tpl.approvedById !== userId) throw new AuthorizationError('Not authorized to approve');
+    
+    const updateData: Record<string, any> = {
       status: 'APPROVED',
       lastActionBy: tpl.approver ? `${tpl.approver.firstName} ${tpl.approver.lastName}` : null,
       lastActionType: 'APPROVED',
       lastActionAt: new Date(),
     };
-    
+
     const updated = await testPartListRepository.update(id, updateData);
     await testPartListRepository.createApprovalHistory(id, userId, 'Approved', 'Completed');
     return updated;
@@ -95,41 +82,37 @@ export class TestPartListService {
 
   async reject(id: string, userId: string, userName: string, remark: string) {
     const tpl = await this.getById(id);
-
     let nextStatus: ReportStatus;
     let stage: string;
-
+    
     if (tpl.status === 'PENDING_REVIEW') {
-      if (tpl.checkedById !== userId) throw new AuthorizationError('Not authorized to reject this review');
+      if (tpl.checkedById !== userId) throw new AuthorizationError('Not authorized');
       nextStatus = 'REVIEW_REJECTED';
       stage = 'REVIEW';
     } else if (tpl.status === 'PENDING_APPROVAL') {
-      if (tpl.approvedById !== userId) throw new AuthorizationError('Not authorized to reject this approval');
+      if (tpl.approvedById !== userId) throw new AuthorizationError('Not authorized');
       nextStatus = 'APPROVAL_REJECTED';
       stage = 'APPROVAL';
     } else {
-      throw new BadRequestError('Test Part List is not pending review or approval');
+      throw new BadRequestError('Not pending review or approval');
     }
 
     const existingHistory = Array.isArray(tpl.rejectionHistory) ? [...tpl.rejectionHistory] : [];
-    const rejectionHistory = [
-      ...existingHistory,
-      { rejectedBy: userName, stage, remark, rejectedAt: new Date().toISOString() },
-    ];
-
-    const updateData: Prisma.TestPartListUpdateInput = {
-      status: nextStatus,
-      lastActionBy: userName,
-      lastActionType: nextStatus,
-      lastActionAt: new Date(),
-      rejectionHistory: rejectionHistory as any,
-    };
+    const rejectionHistory = [...existingHistory, { rejectedBy: userName, stage, remark, rejectedAt: new Date().toISOString() }];
     
+    const updateData: Record<string, any> = {
+      status: nextStatus, 
+      lastActionBy: userName, 
+      lastActionType: nextStatus, 
+      lastActionAt: new Date(), 
+      rejectionHistory
+    };
+
     const updated = await testPartListRepository.update(id, updateData);
     await testPartListRepository.createApprovalHistory(
-      id,
-      userId,
-      nextStatus === 'REVIEW_REJECTED' ? 'Review Rejected' : 'Approval Rejected',
+      id, 
+      userId, 
+      nextStatus === 'REVIEW_REJECTED' ? 'Review Rejected' : 'Approval Rejected', 
       'Completed'
     );
     return updated;
@@ -137,24 +120,17 @@ export class TestPartListService {
 
   async resubmit(id: string, userId: string) {
     const tpl = await this.getById(id);
-
-    if (tpl.partReport?.createdById !== userId) {
-      throw new AuthorizationError('Only the Part Report creator can resubmit the Test Part List');
-    }
-
+    if (tpl.partReport?.createdById !== userId) throw new AuthorizationError('Only the creator can resubmit');
+    
     let nextStatus: ReportStatus;
-    if (tpl.status === 'REVIEW_REJECTED') {
-      nextStatus = 'PENDING_REVIEW';
-    } else if (tpl.status === 'APPROVAL_REJECTED') {
-      nextStatus = 'PENDING_APPROVAL';
-    } else {
-      throw new BadRequestError('Test Part List is not in a rejected state');
-    }
-
-    const updateData: Prisma.TestPartListUpdateInput = {
-      status: nextStatus,
-      lastActionType: 'RESUBMITTED',
-      lastActionAt: new Date(),
+    if (tpl.status === 'REVIEW_REJECTED') nextStatus = 'PENDING_REVIEW';
+    else if (tpl.status === 'APPROVAL_REJECTED') nextStatus = 'PENDING_APPROVAL';
+    else throw new BadRequestError('Not in a rejected state');
+    
+    const updateData: Record<string, any> = {
+      status: nextStatus, 
+      lastActionType: 'RESUBMITTED', 
+      lastActionAt: new Date()
     };
 
     const updated = await testPartListRepository.update(id, updateData);
@@ -172,7 +148,7 @@ export class TestPartListService {
     const hasCheckedBy = tpl.checkedById;
     const nextStatus: ReportStatus = hasCheckedBy ? 'PENDING_REVIEW' : 'GENERATED';
 
-    const updateData: Prisma.TestPartListUpdateInput = {
+    const updateData: Record<string, any> = {
       status: nextStatus,
       isDraft: false,
       generatedAt: new Date(),
@@ -205,9 +181,8 @@ export class TestPartListService {
 
   async delete(id: string, userId: string) {
     const tpl = await this.getById(id);
-    if (tpl.partReport?.createdById !== userId) throw new AuthorizationError('Only the creator can delete the list');
+    if (tpl.partReport?.createdById && tpl.partReport.createdById !== userId) throw new AuthorizationError('Only the creator can delete the list');
 
-    // Reset the Test Part List in place — do NOT touch the parent Part Report
     await testPartListRepository.update(id, {
       status: 'PENDING',
       isDraft: false,
@@ -218,9 +193,9 @@ export class TestPartListService {
       lastActionBy: null,
       lastActionType: null,
       lastActionAt: null,
-      rejectionHistory: Prisma.DbNull,
-      checker: { disconnect: true },
-      approver: { disconnect: true },
+      rejectionHistory: [],
+      checkedById: null,
+      approvedById: null,
     });
   }
 }

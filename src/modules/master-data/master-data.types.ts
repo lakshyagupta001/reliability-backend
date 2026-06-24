@@ -1,6 +1,4 @@
-import { MasterDataLevel } from '@prisma/client';
-
-export type { MasterDataLevel };
+export type MasterDataLevel = 'CATEGORY' | 'SUBCATEGORY' | 'TYPE';
 
 // ============================================================================
 // Public response shapes

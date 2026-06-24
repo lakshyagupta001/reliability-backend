@@ -1,7 +1,7 @@
 import { summaryReportRepository } from './summary-report.repository';
 import { prisma } from '../../../prisma/prisma.client';
 import { Prisma } from '@prisma/client';
-import type { ReportStatus } from '@prisma/client';
+import type { ReportStatus } from '../../../shared/types/reports.types';
 import { NotFoundError } from '../../../shared/utils/errors/not-found-error';
 import { AuthorizationError } from '../../../shared/utils/errors/authorization-error';
 import { BadRequestError } from '../../../shared/utils/errors/bad-request-error';
@@ -16,7 +16,6 @@ export class SummaryReportService {
   async getById(id: string) {
     const sr = await summaryReportRepository.findById(id);
     if (!sr) {
-      console.log(`GET_BY_ID FAILED: ID ${id} not found in database!`);
       throw new NotFoundError('Summary Report');
     }
     return sr;
@@ -29,9 +28,8 @@ export class SummaryReportService {
 
     const sr = await summaryReportRepository.create(data, userId);
 
-    await summaryReportRepository.createLinkedTestSummaryList(sr.id);
+    await summaryReportRepository.createLinkedTestSummaryList(sr.id, data.projectId, userId);
 
-    // Only create approval history if NOT a draft
     if (!isDraft) {
       await summaryReportRepository.createApprovalHistory(sr.id, userId, 'Created', 'Completed');
     }
@@ -41,14 +39,13 @@ export class SummaryReportService {
 
   async update(id: string, data: UpdateSummaryReportBody, userId: string) {
     const current = await this.getById(id);
-    const updateData: Prisma.SummaryReportUpdateInput = {};
+    const updateData: Record<string, any> = {};
 
-    // Re-connect the preparer if this report was logically deleted/reset previously
     if (!current.preparedById) {
-      updateData.preparedBy = { connect: { id: userId } };
+      updateData.preparedById = userId;
     }
 
-    if (data.data !== undefined) updateData.data = data.data as Prisma.InputJsonValue;
+    if (data.data !== undefined) updateData.data = data.data;
     if (data.formatNumber !== undefined) updateData.formatNumber = data.formatNumber;
     if (data.reportNumber !== undefined) updateData.reportNumber = data.reportNumber;
     if (data.checkedByName !== undefined) updateData.checkedByName = data.checkedByName;
@@ -56,7 +53,7 @@ export class SummaryReportService {
 
     if (data.checkedById !== undefined) {
       const checkedId = data.checkedById || null;
-      updateData.checker = checkedId ? { connect: { id: checkedId } } : { disconnect: true };
+      updateData.checkedById = checkedId;
       if (checkedId && current.reportStatus === 'GENERATED') {
         updateData.reportStatus = 'PENDING_REVIEW';
       } else if (!checkedId && current.reportStatus === 'PENDING_REVIEW') {
@@ -66,7 +63,7 @@ export class SummaryReportService {
 
     if (data.approvedById !== undefined) {
       const approvedId = data.approvedById || null;
-      updateData.approver = approvedId ? { connect: { id: approvedId } } : { disconnect: true };
+      updateData.approvedById = approvedId;
       if (approvedId && current.reportStatus === 'REVIEWED') {
         updateData.reportStatus = 'PENDING_APPROVAL';
       } else if (!approvedId && current.reportStatus === 'PENDING_APPROVAL') {
@@ -83,7 +80,7 @@ export class SummaryReportService {
     if (sr.checkedById !== userId) throw new AuthorizationError('Not authorized to review this Summary Report');
 
     const nextStatus: ReportStatus = sr.approvedById ? 'PENDING_APPROVAL' : 'REVIEWED';
-    const updateData: Prisma.SummaryReportUpdateInput = {
+    const updateData: Record<string, any> = {
       reportStatus: nextStatus,
       lastActionBy: sr.checker ? `${sr.checker.firstName} ${sr.checker.lastName}` : null,
       lastActionType: 'REVIEWED',
@@ -100,7 +97,7 @@ export class SummaryReportService {
     if (sr.reportStatus !== 'PENDING_APPROVAL') throw new BadRequestError('Summary Report must be reviewed before approval');
     if (sr.approvedById !== userId) throw new AuthorizationError('Not authorized to approve this Summary Report');
 
-    const updateData: Prisma.SummaryReportUpdateInput = {
+    const updateData: Record<string, any> = {
       reportStatus: 'APPROVED',
       lastActionBy: sr.approver ? `${sr.approver.firstName} ${sr.approver.lastName}` : null,
       lastActionType: 'APPROVED',
@@ -135,12 +132,12 @@ export class SummaryReportService {
       { rejectedBy: userName, stage, remark, rejectedAt: new Date().toISOString() },
     ];
 
-    const updateData: Prisma.SummaryReportUpdateInput = {
+    const updateData: Record<string, any> = {
       reportStatus: nextStatus,
       lastActionBy: userName,
       lastActionType: nextStatus,
       lastActionAt: new Date(),
-      rejectionHistory: rejectionHistory as any,
+      rejectionHistory,
     };
 
     const updated = await summaryReportRepository.update(id, updateData);
@@ -168,7 +165,7 @@ export class SummaryReportService {
       throw new BadRequestError('Summary Report is not in a rejected state');
     }
 
-    const updateData: Prisma.SummaryReportUpdateInput = {
+    const updateData: Record<string, any> = {
       reportStatus: nextStatus,
       lastActionType: 'RESUBMITTED',
       lastActionAt: new Date(),
@@ -187,9 +184,8 @@ export class SummaryReportService {
   async deleteSection(id: string, _userRole: string): Promise<void> {
     const report = await this.getById(id);
     
-    // Logical reset deletion if associated TestSummaryList exists
     if (report.testSummaryList) {
-      const resetUpdateData: Prisma.SummaryReportUpdateInput = {
+      const resetUpdateData: Record<string, any> = {
         reportStatus: 'PENDING',
         isDraft: false,
         data: {},
@@ -199,13 +195,13 @@ export class SummaryReportService {
         reportNumber: null,
         lastActionBy: null,
         lastActionType: null,
-        rejectionHistory: Prisma.DbNull,
+        rejectionHistory: [],
         generatedAt: null,
       };
 
-      if (report.preparedById) resetUpdateData.preparedBy = { disconnect: true };
-      if (report.checkedById) resetUpdateData.checker = { disconnect: true };
-      if (report.approvedById) resetUpdateData.approver = { disconnect: true };
+      if (report.preparedById) resetUpdateData.preparedById = null;
+      if (report.checkedById) resetUpdateData.checkedById = null;
+      if (report.approvedById) resetUpdateData.approvedById = null;
 
       await summaryReportRepository.update(id, resetUpdateData);
     } else {
@@ -226,16 +222,13 @@ export class SummaryReportService {
     const hasCheckedBy = sr.checkedById || srData?.approvals?.checkedByUserId;
     const nextStatus: ReportStatus = hasCheckedBy ? 'PENDING_REVIEW' : 'GENERATED';
 
-    const updateData: Prisma.SummaryReportUpdateInput = {
+    const updateData: Record<string, any> = {
       isDraft: false,
       generatedAt: new Date(),
       reportStatus: nextStatus,
     };
 
     const updated = await summaryReportRepository.update(id, updateData);
-
-    // Note: TestSummaryList manages its own isDraft independently — do NOT update it here
-
     await summaryReportRepository.createApprovalHistory(id, userId, 'Generated', 'Completed');
     return summaryReportRepository.findById(id);
   }

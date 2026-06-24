@@ -1,6 +1,6 @@
 import { prisma } from '../../prisma/prisma.client';
-import type { MasterDataLevel, Prisma } from '@prisma/client';
-import type { CreateMasterDataBody, UpdateMasterDataBody, ListMasterDataQuery } from './master-data.types';
+import type { Prisma } from '@prisma/client';
+import type { MasterDataLevel, CreateMasterDataBody, UpdateMasterDataBody, ListMasterDataQuery } from './master-data.types';
 
 // The shape that master-data.service.ts expects
 type RawNode = {
